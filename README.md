@@ -1,6 +1,6 @@
 # Stronghold-Protocol-Next
 
-明日方舟 PC 端「卫戍协议-规程」研究工具。当前提供单次、只读的 Windows Graphics Capture (WGC) 窗口截图与原图归档；不发送游戏输入，也不实现识别、策略或周期调度。
+明日方舟 PC 端「卫戍协议-规程」研究工具。当前提供单次、只读的 Windows Graphics Capture (WGC) 窗口截图与原图归档；另提供有限范围的离线分类与字段识别；不发送游戏输入，不实现策略或周期调度。
 
 ## 构建与离线检查
 
@@ -45,7 +45,7 @@ metadata 使用 schema 2。`source_frame.time` 是 WGC `SystemRelativeTime` 的 
 
 ## 离线存档检查
 
-`build\x64\Release\stronghold-capture.exe inspect-archive --archive <存档目录>` 只读检查 schema 2 的 `metadata.json` 与 RGB8 `raw.png`，输出记录标识、尺寸和原始来源元数据。此功能尚不包含画面分类或字段识别。离线记录一律为 `historical`；元数据中的 `fresh` 仅代表原存档写入时的检查，不表示当前画面。
+`build\x64\Release\stronghold-capture.exe inspect-archive --archive <存档目录>` 只读检查 schema 2 的 `metadata.json` 与 RGB8 `raw.png`，输出记录标识、尺寸和原始来源元数据。此检查命令不运行分类或字段识别；分析使用 analyze-archive。离线记录一律为 `historical`；元数据中的 `fresh` 仅代表原存档写入时的检查，不表示当前画面。
 
 C++ 调用入口为 `stronghold::load_capture_archive`，见 `include/stronghold/recognition.hpp`。局部编译与合成存档检查：`pwsh -File scripts/build.ps1 -TestRecognition`（不会运行 capture worker suite）。格式限制、错误码与验证范围见 [离线存档读取](docs/archive-reader.md)。
 
@@ -56,3 +56,5 @@ C++ 调用入口为 `stronghold::load_capture_archive`，见 `include/stronghold
 运行时和模型来自显式指定的可信本地安装，项目不重新分发这些文件。局部检查仍为 `pwsh -File scripts/build.ps1 -TestRecognition`；真实开发正例通过文档列出的环境变量显式选入，默认不读取真实 captures。独立样本评估使用 `scripts/evaluate-recognition.ps1`，开发与验证的用途分离，未知拒识不充当 loading 分类成功。
 
 历史状态持久化与重新读取见 [docs/state-records.md](docs/state-records.md)。
+
+离线分类与普通局内字段分析现已提供有限的 1920×1200 支持范围（普通休整/战斗/战后等待、局外菜单/难度页、特殊信息页/结果覆盖层），参见 [核心字段识别](docs/core-field-recognition.md) 和 [历史状态记录](docs/state-records.md)。支持范围及尚未验证事项以对应文档为准。

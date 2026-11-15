@@ -43,6 +43,17 @@ void validate(const StateRecord& r) {
     } else if(!r.special_view.empty()) invalid("special_view");
     if(r.recognizer_version.empty()||r.reason.empty()) invalid("recognizer/reason");
     digest(r.model_sha256); digest(r.dictionary_sha256); digest(r.funds.model_sha256); digest(r.funds.dictionary_sha256);
+    const auto& timer=r.remaining_time;
+    digest(timer.model_sha256); digest(timer.dictionary_sha256);digest(r.stage.model_sha256);digest(r.stage.dictionary_sha256);
+    if(!std::isfinite(timer.confidence)||timer.confidence<0||timer.confidence>1||timer.reason.empty()) invalid("remaining_time.confidence/reason");
+    if(timer.status=="recognized") {
+        if(!timer.value||*timer.value<0||*timer.value>999||timer.model_sha256.empty()||timer.dictionary_sha256.empty()||r.runtime_version.empty()||r.category!="ordinary_in_game") invalid("remaining_time.recognized");
+    } else if(timer.status!="unknown"||timer.value) invalid("remaining_time.status/value");
+    const auto& phase=r.stage;
+    if(!std::isfinite(phase.confidence)||phase.confidence<0||phase.confidence>1||phase.reason.empty()) invalid("stage.confidence/reason");
+    if(phase.status=="recognized") {
+        if(!phase.value||(*phase.value!="rest"&&*phase.value!="combat"&&*phase.value!="waiting")||phase.model_sha256.empty()||phase.dictionary_sha256.empty()||r.runtime_version.empty()||r.category!="ordinary_in_game") invalid("stage.recognized");
+    } else if(phase.status!="unknown"||phase.value) invalid("stage.status/value");
     const auto& f=r.funds;
     if(!std::isfinite(f.confidence)||f.confidence<0||f.confidence>1||f.reason.empty()) invalid("funds.confidence/reason");
     if(f.status=="recognized") {
@@ -69,7 +80,12 @@ void validate(const StateRecord& r) {
 }
 std::string serialize(const StateRecord& r) {
     const auto& f=r.funds;
-    std::string s="{\"schema_version\":2,\"id\":"+quote_json(r.id)+",\"saved_at\":"+quote_json(r.saved_at)+",\"observation_status\":\"historical\",\"source\":{\"frame_id\":"+quote_json(r.frame_id)+",\"directory\":"+quote_json(utf8(r.source_directory.wstring()))+",\"request_start\":"+quote_json(r.request_start)+",\"request_end\":"+quote_json(r.request_end)+",\"metadata_json\":"+quote_json(r.source_metadata_json)+"},\"category\":"+quote_json(r.category)+",\"special_view\":"+quote_json(r.special_view)+",\"reason\":"+quote_json(r.reason)+",\"recognizer_version\":"+quote_json(r.recognizer_version)+",\"runtime_version\":"+quote_json(r.runtime_version)+",\"model_sha256\":"+quote_json(r.model_sha256)+",\"dictionary_sha256\":"+quote_json(r.dictionary_sha256)+",\"funds\":{\"status\":"+quote_json(f.status)+",\"value\":"+(f.value?std::to_string(*f.value):"null")+",\"confidence\":"+std::to_string(f.confidence)+",\"reason\":"+quote_json(f.reason)+",\"raw_text\":"+quote_json(f.raw_text)+",\"model_sha256\":"+quote_json(f.model_sha256)+",\"dictionary_sha256\":"+quote_json(f.dictionary_sha256)+"},\"evidence\":[";
+    std::string s="{\"schema_version\":2,\"id\":"+quote_json(r.id)+",\"saved_at\":"+quote_json(r.saved_at)+",\"observation_status\":\"historical\",\"source\":{\"frame_id\":"+quote_json(r.frame_id)+",\"directory\":"+quote_json(utf8(r.source_directory.wstring()))+",\"request_start\":"+quote_json(r.request_start)+",\"request_end\":"+quote_json(r.request_end)+",\"metadata_json\":"+quote_json(r.source_metadata_json)+"},\"category\":"+quote_json(r.category)+",\"special_view\":"+quote_json(r.special_view)+",\"reason\":"+quote_json(r.reason)+",\"recognizer_version\":"+quote_json(r.recognizer_version)+",\"runtime_version\":"+quote_json(r.runtime_version)+",\"model_sha256\":"+quote_json(r.model_sha256)+",\"dictionary_sha256\":"+quote_json(r.dictionary_sha256)+",\"funds\":{\"status\":"+quote_json(f.status)+",\"value\":"+(f.value?std::to_string(*f.value):"null")+",\"confidence\":"+std::to_string(f.confidence)+",\"reason\":"+quote_json(f.reason)+",\"raw_text\":"+quote_json(f.raw_text)+",\"model_sha256\":"+quote_json(f.model_sha256)+",\"dictionary_sha256\":"+quote_json(f.dictionary_sha256)+"}";
+    // All observations share this snapshot's immutable frame/source linkage.
+    auto extra=[&](const auto& observation,const std::string& value) {
+        return "{\"status\":"+quote_json(observation.status)+",\"value\":"+value+",\"confidence\":"+std::to_string(observation.confidence)+",\"reason\":"+quote_json(observation.reason)+",\"raw_text\":"+quote_json(observation.raw_text)+",\"model_sha256\":"+quote_json(observation.model_sha256)+",\"dictionary_sha256\":"+quote_json(observation.dictionary_sha256)+"}";
+    };
+    s+=",\"stage\":"+extra(r.stage,r.stage.value?quote_json(*r.stage.value):"null")+",\"remaining_time_unit\":\"seconds\",\"remaining_time\":"+extra(r.remaining_time,r.remaining_time.value?std::to_string(*r.remaining_time.value):"null")+",\"evidence\":[";
     for(size_t i=0;i<r.evidence.size();++i) {if(i)s+=',';s+=quote_json(r.evidence[i]);} return s+"]}";
 }
 StateRecord parse(const std::string& content) {
@@ -86,6 +102,18 @@ StateRecord parse(const std::string& content) {
         if(v.ValueType()!=JsonValueType::Null) {
             double n=number(f,"value");if(std::trunc(n)!=n||n<0||n>INT_MAX) invalid("funds.value");r.funds.value=static_cast<int>(n);
         }
+        if(text(o,"remaining_time_unit")!="seconds") invalid("remaining_time_unit");
+        auto read_observation=[&](const char* key,auto& target) {
+            auto field=object(o,key);target.status=text(field,"status");target.confidence=number(field,"confidence");target.reason=text(field,"reason");target.raw_text=text(field,"raw_text");target.model_sha256=text(field,"model_sha256");target.dictionary_sha256=text(field,"dictionary_sha256");
+            if(!field.HasKey(L"value")) invalid(key);
+            return field;
+        };
+        auto stage=read_observation("stage",r.stage);
+        if(stage.GetNamedValue(L"value").ValueType()!=JsonValueType::Null) r.stage.value=text(stage,"value");
+        auto timer=read_observation("remaining_time",r.remaining_time);
+        if(timer.GetNamedValue(L"value").ValueType()!=JsonValueType::Null) {
+            double n=number(timer,"value");if(std::trunc(n)!=n||n<0||n>999) invalid("remaining_time.value");r.remaining_time.value=static_cast<int>(n);
+        }
         for(auto item:member(o,"evidence",JsonValueType::Array).GetArray()) {if(item.ValueType()!=JsonValueType::String) invalid("evidence");r.evidence.push_back(winrt::to_string(item.GetString()));}
         validate(r);return r;
     } catch(const winrt::hresult_error&) {throw Error("state_invalid","Malformed or inconsistent state JSON");}
@@ -96,7 +124,7 @@ std::string state_record_json(const StateRecord& record) { auto content=serializ
 fs::path save_state_record(const Analysis& a,const fs::path& output) {
     if(a.source.directory.empty()) invalid("source.directory");
     StateRecord r;r.id=unique_id();r.saved_at=utc_now();r.frame_id=a.source.id;r.source_directory=fs::absolute(a.source.directory);r.source_metadata_json=a.source.metadata_json;
-    r.request_start=a.source.capture.requested_at;r.request_end=a.source.capture.completed_at;r.category=a.category;r.special_view=a.special_view;r.reason=a.reason;r.recognizer_version=a.recognizer_version;r.runtime_version=a.runtime_version;r.model_sha256=a.model_sha256;r.dictionary_sha256=a.dictionary_sha256;r.evidence=a.evidence;r.funds=a.funds;
+    r.request_start=a.source.capture.requested_at;r.request_end=a.source.capture.completed_at;r.category=a.category;r.special_view=a.special_view;r.reason=a.reason;r.recognizer_version=a.recognizer_version;r.runtime_version=a.runtime_version;r.model_sha256=a.model_sha256;r.dictionary_sha256=a.dictionary_sha256;r.evidence=a.evidence;r.funds=a.funds;r.stage=a.stage;r.remaining_time=a.remaining_time;
     // Reuse the public-load validation contract before any filesystem mutation.
     const auto content=serialize(r);if(content.size()>record_limit) throw Error("state_resource_limit","State exceeds size limit");parse(content);
     std::error_code ec;fs::create_directories(output,ec);if(ec) throw Error("state_io","Cannot create state output directory");

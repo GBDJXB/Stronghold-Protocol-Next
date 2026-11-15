@@ -24,12 +24,21 @@ struct NumericObservation {
     std::string reason = "screen_not_supported", raw_text;
     std::string model_sha256, dictionary_sha256;
 };
+struct StageObservation {
+    std::string status = "unknown";
+    std::optional<std::string> value;
+    double confidence = 0;
+    std::string reason = "screen_not_supported", raw_text;
+    std::string model_sha256, dictionary_sha256;
+};
 struct Analysis {
+    StageObservation stage;
+    NumericObservation remaining_time;
     NumericObservation funds;
     LoadedCapture source;
     std::string category = "unknown", special_view, reason;
     std::vector<std::string> evidence;
-    std::string recognizer_version = "maa-text-special-v3", runtime_version, model_sha256, dictionary_sha256;
+    std::string recognizer_version = "maa-text-core-special-v4", runtime_version, model_sha256, dictionary_sha256;
 };
 Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_root);
 }

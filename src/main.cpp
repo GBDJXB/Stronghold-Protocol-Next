@@ -103,6 +103,20 @@ int wmain(int argc, wchar_t** argv) {
                 << ",\"raw_text\":" << quote_json(result.funds.raw_text)
                 << ",\"model_sha256\":" << quote_json(result.funds.model_sha256)
                 << ",\"dictionary_sha256\":" << quote_json(result.funds.dictionary_sha256)
+                << "},\"stage\":{\"status\":" << quote_json(result.stage.status)
+                << ",\"value\":" << (result.stage.value?quote_json(*result.stage.value):"null")
+                << ",\"confidence\":" << result.stage.confidence
+                << ",\"reason\":" << quote_json(result.stage.reason)
+                << ",\"raw_text\":" << quote_json(result.stage.raw_text)
+                << ",\"model_sha256\":" << quote_json(result.stage.model_sha256)
+                << ",\"dictionary_sha256\":" << quote_json(result.stage.dictionary_sha256)
+                << "},\"remaining_time_unit\":\"seconds\",\"remaining_time\":{\"status\":" << quote_json(result.remaining_time.status)
+                << ",\"value\":" << (result.remaining_time.value?std::to_string(*result.remaining_time.value):"null")
+                << ",\"confidence\":" << result.remaining_time.confidence
+                << ",\"reason\":" << quote_json(result.remaining_time.reason)
+                << ",\"raw_text\":" << quote_json(result.remaining_time.raw_text)
+                << ",\"model_sha256\":" << quote_json(result.remaining_time.model_sha256)
+                << ",\"dictionary_sha256\":" << quote_json(result.remaining_time.dictionary_sha256)
                 << "},\"metadata\":" << result.source.metadata_json << "}\n";
             return 0;
         }

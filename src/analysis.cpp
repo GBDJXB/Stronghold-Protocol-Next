@@ -1,6 +1,30 @@
 #include "stronghold/analysis.hpp"
 #include <regex>
+#include <algorithm>
+#include <cmath>
 namespace stronghold {
+namespace {
+// Fixed 1920x1200 TV face geometry: TL, BL, BR, TR. Bilinear quad
+// rectification is deterministic pixel preprocessing, never digit inference.
+Frame timer_face(const Frame& source) {
+    Frame target{100,54,std::vector<std::uint8_t>(100*54*3)};
+    for(int y=0;y<54;++y) for(int x=0;x<100;++x) {
+        const double u=(x+.5)/100, v=(y+.5)/54;
+        const double sx=(1-u)*(1-v)*1720+(1-u)*v*1705+u*v*1805+u*(1-v)*1821-.5;
+        const double sy=(1-u)*(1-v)*63+(1-u)*v*117+u*v*145+u*(1-v)*88-.5;
+        const int x0=static_cast<int>(sx),y0=static_cast<int>(sy);
+        const double fx=sx-x0,fy=sy-y0;
+        for(int c=0;c<3;++c) {
+            auto pixel=[&](int px,int py){return source.rgb[(static_cast<size_t>(py)*source.width+px)*3+c];};
+            const double top=pixel(x0,y0)*(1-fx)+pixel(x0+1,y0)*fx;
+            const double bottom=pixel(x0,y0+1)*(1-fx)+pixel(x0+1,y0+1)*fx;
+            target.rgb[(y*100+x)*3+c]=static_cast<std::uint8_t>(std::clamp(std::lround(top*(1-fy)+bottom*fy),0L,255L));
+        }
+    }
+    return target;
+}
+}
+
 Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_root) {
     Analysis result; result.source = load_capture_archive(directory);
     const auto& frame = result.source.capture.frame;
@@ -58,6 +82,8 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
            ready.text=="准备就绪" && ready.confidence>=.95 && refresh.text=="刷新" && refresh.confidence>=.95 &&
            close.text=="收起" && close.confidence>=.95) {
             result.category="ordinary_in_game"; result.reason="stable_rest_text_anchors";
+            result.stage={"recognized", "rest", rest.confidence, "stable_rest_phase_text", rest.text, result.model_sha256, result.dictionary_sha256};
+            result.remaining_time.reason="no_supported_visible_timer";
             NeuralTextRecognizer numeric_recognizer(maa_root,TextModel::Characters);
             result.funds.model_sha256=numeric_recognizer.model_sha256;
             result.funds.dictionary_sha256=numeric_recognizer.dictionary_sha256;
@@ -98,6 +124,26 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
                std::regex_match(progress.text,std::regex("[0-9]{1,3}/[0-9]{1,3}")) && progress.confidence>=.95 &&
                covenant.text=="坚守" && covenant.confidence>=.95) {
                 result.category="ordinary_in_game"; result.reason="combat_text_anchors";
+                const auto waiting=read("waiting_phase",817,1109,378,42);
+                const auto slash=progress.text.find('/');
+                if(std::stoi(progress.text.substr(0,slash))<std::stoi(progress.text.substr(slash+1)))
+                    result.stage={"recognized","combat",progress.confidence,"unfinished_enemy_progress_anchors",progress.text,result.model_sha256,result.dictionary_sha256};
+                else result.stage.reason="completed_enemy_progress_without_phase_anchor";
+                if(waiting.text=="作战结束,等待队友完成作战" && waiting.confidence>=.95)
+                    result.stage={"recognized","waiting",waiting.confidence,"finished_waiting_text",waiting.text,result.model_sha256,result.dictionary_sha256};
+                NeuralTextRecognizer numeric_recognizer(maa_root,TextModel::Characters);
+                result.remaining_time.model_sha256=numeric_recognizer.model_sha256;
+                result.remaining_time.dictionary_sha256=numeric_recognizer.dictionary_sha256;
+                const auto face=timer_face(frame);
+                const auto timer=numeric_recognizer.read(face,0,0,face.width,face.height);
+                result.evidence.push_back("tv_timer_quad="+timer.text+";confidence="+std::to_string(timer.confidence));
+                result.remaining_time.raw_text=timer.text; result.remaining_time.confidence=timer.confidence;
+                result.remaining_time.reason="unreadable_tv_timer";
+                if(std::regex_match(timer.text,std::regex("[0-9]{1,3}")) && timer.confidence>=.95) {
+                    result.remaining_time.status="recognized";result.remaining_time.value=std::stoi(timer.text);
+                    result.remaining_time.reason="rectified_tv_seconds_text";
+                }
+
             } else result.reason="insufficient_supported_text";
         }
     }

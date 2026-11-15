@@ -13,7 +13,7 @@
 
 ## 契约
 
-C++ public seam：`save_state_record(Analysis, output)` 返回文件路径；`load_state_record(file)` 返回不含 RGB 的 `StateRecord`。`state_record_json` 为 CLI 提供同一 schema 的 JSON。状态 schema 1 保存分类及原因、funds 值/status/confidence/reason/raw_text、分类模型和字段模型 SHA256、字典 SHA256、运行时与识别器版本、evidence、原存档绝对路径/frame_id/原始 metadata JSON。
+C++ public seam：`save_state_record(Analysis, output)` 返回文件路径；`load_state_record(file)` 返回不含 RGB 的 `StateRecord`。`state_record_json` 为 CLI 提供同一 schema 的 JSON。状态 schema 2 保存分类、special_view 子类及原因、funds/remaining_time/stage 各自的值/status/confidence/reason/raw_text、分类模型和字段模型 SHA256、字典 SHA256、运行时与识别器版本、evidence、原存档绝对路径/frame_id/原始 metadata JSON。
 
 重新读取只解析状态文件，不打开来源目录，因此原截图移动或暂时不可访问仍可查看历史结果。来源路径是历史关联；这不证明该路径当前仍对应原图。原 metadata 的请求起止 UTC 和来源 QPC 原样保留，UTC 请求时间不当作 QPC 来源帧的真实墙钟时间。`saved_at` 是创建状态记录的 UTC 时间，不是模型时间或来源帧时间。
 
@@ -28,3 +28,5 @@ C++ public seam：`save_state_record(Analysis, output)` 返回文件路径；`lo
 显式开发 S015 fixture 的实际 funds=4 分析结果也经过保存/重读，字段模型来源与历史有效性保持；同时通过两个独立 CLI 进程验证保存和重新读取。只使用开发图，不读取预留图。测试支持持久化契约，不增加识别准确率或当前状态可靠性的宣称。
 
 时间与额外空间复杂度均为 O(record bytes)，上限由固定文件限制约束；不复制 PNG 或 RGB。发布使用同目录临时文件和 Windows 无覆盖移动，不承诺断电情况下的完整目录事务或外部文件不可篡改。
+
+当前 schema 2 要求 special_view、stage、remaining_time 与 remaining_time_unit=seconds 完整存在，拒绝 schema 1，避免旧的不完整快照被当作包含核心字段。stage 支持 rest/combat/waiting；剩余秒数范围 0–999。已识别字段必须处于普通局内类别；特殊 information/result、局外和未知类别的核心字段仅允许 unknown/null。schema 1 返回 state_version，不提供隐式迁移。各字段共同关联包含记录的 source.frame_id、原始 metadata 与观测请求时间；每个字段独立保留模型来源和有效性。
