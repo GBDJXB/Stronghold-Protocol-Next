@@ -88,13 +88,15 @@ $rows = foreach ($record in $selected.samples) {
     }
     # This release rejects pending special/transition mappings; retain the original semantic label.
     $target = if ($null -eq $record.expected_classifier_output) { 'unknown' } else { $record.expected_classifier_output }
-    $outcome = if ($analysis.category -ceq $target) { 'correct' }
-        elseif ($analysis.category -ceq 'unknown') { 'rejected' } else { 'misclassified' }
+    $contractMatch = $analysis.category -ceq $target
+    $outcome = if ($analysis.category -ceq 'unknown' -and $record.candidate_category -cne 'unknown') { 'rejected' }
+        elseif ($analysis.category -ceq $record.candidate_category) { 'correct' } else { 'misclassified' }
     $unsafeOrdinary = $analysis.category -ceq 'ordinary_in_game' -and
         ($record.candidate_category -in @('loading', 'special_in_game', 'special_setup') -or $null -eq $record.expected_classifier_output)
     [ordered]@{
         sample_id = $record.sample_id; frame_id = $record.frame_id; scene_group = $record.scene_group
         semantic_category = $record.candidate_category; frozen_target = $target; outcome = $outcome
+        frozen_contract_match = $contractMatch
         independent_evaluation_candidate = $record.use_for_classifier_evaluation
         eligibility_reason = $record.classifier_evaluation_reason; sample_usage = $record.sample_usage
         unsafe_ordinary_prediction = $unsafeOrdinary; analysis = $analysis
@@ -111,7 +113,7 @@ $counts = foreach ($category in @('ordinary_in_game', 'out_of_game', 'loading', 
     }
 }
 $report = [ordered]@{
-    schema = 1; split = $Split; created_utc = [DateTime]::UtcNow.ToString('o')
+    schema = 2; report_producer = 'evaluate-recognition-v2'; split = $Split; created_utc = [DateTime]::UtcNow.ToString('o')
     executable_sha256 = (Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash
     manifest_sha256 = (Get-FileHash -LiteralPath (Join-Path $DatasetDirectory 'manifest.json') -Algorithm SHA256).Hash
     scope = '1920x1200 offline archives; loading classification unsupported; pending special/transition mappings reject to unknown. Counts are frames, not independent scenes.'

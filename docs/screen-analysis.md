@@ -59,3 +59,5 @@ CTC confidence 是网络字符概率的均值，不是校准后的画面分类�
 开发组完整离线运行：`scripts/evaluate-recognition.ps1 -Split development` 对 35 张仅开发样本执行原生 CLI。13 张局外均正确；17 张稳定普通局内中 16 张识别、S019 战斗开始横幅拒识；2 张过渡与 3 张特殊信息/结果画面均 unknown；开发组加载样本为 0。加载/特殊/过渡误报 ordinary 为 0（不推导未见加载的安全性）。这些是开发回代结果，不能称为独立准确率，难度页含 12 张近重复。
 
 完整来源与逐图证据报告保存在 `captures/state-recognition-20261115-050329/classifier-02-development.json`（不纳入代码提交）。正式评估候选尚未执行。S019 明确列为当前拒识边界，不为提高开发分数放宽普通战斗规则。
+
+评估报告 schema 2 将真实语义分类结果与首版安全契约分开：已知画面输出 unknown 一律记为 rejected，即便该画面的冻结目标就是 unknown；`frozen_contract_match` 单独记录是否符合保守目标。开发组按真实语义统计为 ordinary_in_game 正确 16、拒识 3（含两张过渡），out_of_game 正确 13，special_in_game 拒识 3。既有开发 JSON 已仅据保存的原始分析重新解释上述两项，未重读图像或重跑模型；报告保留原始 executable/model/source 指纹及解释更新说明。
