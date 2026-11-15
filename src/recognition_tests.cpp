@@ -7,9 +7,9 @@
 
 namespace stronghold {
 int run_recognition_tests() {
-    const auto root = fs::temp_directory_path() / wide("recognition-" + unique_id());
-    struct Cleanup { fs::path p; ~Cleanup(){ std::error_code ec; fs::remove_all(p, ec); } } cleanup{root};
     try {
+        const auto root = fs::temp_directory_path() / wide("recognition-" + unique_id());
+        struct Cleanup { fs::path p; ~Cleanup(){ std::error_code ec; fs::remove_all(p, ec); } } cleanup{root};
         Capture c;
         c.window.hwnd = 123; c.window.pid = 456; c.window.process_created = 133000000000000001;
         c.window.width = 2; c.window.height = 1; c.window.title = "合成截图";
@@ -347,5 +347,6 @@ int run_recognition_tests() {
         std::cout << "recognition: version/type/path/resource/missing/corrupt/dimension failures and repeated reads passed\n";
         return 0;
     } catch (const Error& e) { std::cerr << e.code << ": " << e.what() << '\n'; return 1; }
+      catch (const std::exception& e) { std::cerr << "recognition test system exception: " << e.what() << '\n'; return 1; }
 }
 }
