@@ -32,6 +32,7 @@ int run_recognition_tests() {
         auto synthetic = observation;
         synthetic.category="ordinary_in_game"; synthetic.reason="synthetic_fixture";
         synthetic.runtime_version="synthetic-runtime";
+        synthetic.model_sha256=std::string(64,'e'); synthetic.dictionary_sha256=std::string(64,'f');
         synthetic.funds.status="recognized"; synthetic.funds.value=4;
         synthetic.funds.confidence=.99; synthetic.funds.reason="synthetic_fixture"; synthetic.funds.raw_text="4";
         synthetic.funds.model_sha256=std::string(64,'a'); synthetic.funds.dictionary_sha256=std::string(64,'b');
@@ -66,6 +67,29 @@ int run_recognition_tests() {
             content.replace(pos,from.size(),to);std::ofstream out(corrupt,std::ios::binary|std::ios::trunc);out<<content;out.close();
             state_error(code,[&]{load_state_record(corrupt);});
         };
+        for(const auto& category : {"ordinary_in_game", "out_of_game", "special_in_game"}) {
+            auto classified=observation;
+            classified.category=category; classified.special_view=classified.category=="special_in_game"?"result":"";
+            classified.model_sha256=std::string(64,'e'); classified.dictionary_sha256=std::string(64,'f');
+            classified.runtime_version="synthetic-runtime";
+            const auto complete_file=save_state_record(classified,root/L"classifier-provenance");
+            std::ifstream input(complete_file,std::ios::binary);
+            const std::string complete((std::istreambuf_iterator<char>(input)),{}); input.close();
+            for(auto field : {&Analysis::model_sha256, &Analysis::dictionary_sha256, &Analysis::runtime_version}) {
+                auto incomplete=classified; const auto present=incomplete.*field; (incomplete.*field).clear();
+                state_error("state_invalid",[&]{save_state_record(incomplete,root/L"invalid-classifier-output");});
+                auto content=complete; const auto at=content.find(present);
+                if(at==std::string::npos) throw Error("test_failed","Missing classifier corruption fixture");
+                content.erase(at,present.size());
+                {std::ofstream out(corrupt,std::ios::binary|std::ios::trunc);out<<content;}
+                state_error("state_invalid",[&]{load_state_record(corrupt);});
+            }
+        }
+        if(fs::exists(root/L"invalid-classifier-output")) throw Error("test_failed","Incomplete classifier state was published");
+        const auto unsupported=load_state_record(unknown_file);
+        if(!unsupported.model_sha256.empty() || !unsupported.dictionary_sha256.empty() || !unsupported.runtime_version.empty())
+            throw Error("test_failed","Unsupported-dimensions fixture unexpectedly has classifier provenance");
+        std::cout << "state: classifier provenance validation passed\n";
         bad_state("\"schema_version\":2","\"schema_version\":99","state_version");
         bad_state("\"stage\":","\"missing_stage\":","state_invalid");
         bad_state("\"remaining_time\":","\"missing_remaining_time\":","state_invalid");

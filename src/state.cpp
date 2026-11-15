@@ -42,6 +42,7 @@ void validate(const StateRecord& r) {
         if(r.special_view!="information"&&r.special_view!="result") invalid("special_view");
     } else if(!r.special_view.empty()) invalid("special_view");
     if(r.recognizer_version.empty()||r.reason.empty()) invalid("recognizer/reason");
+    if(r.category!="unknown" && (r.model_sha256.empty()||r.dictionary_sha256.empty()||r.runtime_version.empty())) invalid("classifier provenance");
     digest(r.model_sha256); digest(r.dictionary_sha256); digest(r.funds.model_sha256); digest(r.funds.dictionary_sha256);
     const auto& timer=r.remaining_time;
     digest(timer.model_sha256); digest(timer.dictionary_sha256);digest(r.stage.model_sha256);digest(r.stage.dictionary_sha256);
