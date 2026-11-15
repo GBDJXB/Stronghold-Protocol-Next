@@ -97,3 +97,19 @@ TDD 使用已批准公开 analyze/save/load seam：开发 S016 在分类实现�
 
 
 本轮35张开发存档通过逐图公开CLI运行（只读 development-index）：16 ordinary_in_game、13 out_of_game、3 special_in_game（S016 information、S034/S035 result）、3 unknown（S018/S019/S036）。三个特殊页资金均 unknown。报告保存在实现 worktree 的 build/ticket06-development.json，不纳入提交；不是独立评估。没有读取预留图像或结果。
+
+## Ticket02 补充开发素材修复（v5）
+
+仅使用 20261115-095728 已人工复核的26张开发代表图；不读取未复核序列或验证像素，不修改素材标签和划分。`maa-text-core-special-v5` 保持1920×1200有限布局、历史来源关联和既有字段持久化契约。
+
+新增局外入口要求「协议数据库」和「关键目标」两处精确文本，各≥0.95。加载仍输出unknown；先检查底部「正在提交反馈」前缀（ROI 1086,1095,280,45，平均字符置信度≥0.90），避免后面的难度页正例锚点覆盖加载反馈。此为已见反馈布局的拒识守卫，不宣称支持loading分类或所有加载动画。
+
+普通战斗保留回合/敌人进度门控，允许旧「坚守」或新「精准」盟约位置各≥0.95；并在普通判定前拒识开发已见盟约说明中的「层数」。普通休整仍要求回合、休息一下、准备就绪；展开商店要求刷新和收起，折叠商店要求展开。折叠商店资金保持unknown/shop_collapsed，不读取隐藏金额。新增拒识锚点为攻击范围（选中干员）、天空盒（资源说明）、保护目标（目标说明），各≥0.95；均是固定位置可读文本，不能保证其他说明层或任意偏移布局安全。
+
+滚动后的完整本局信息页使用右侧「敌方领袖」「特训敌人·元素」「特训敌人·隐匿」三处精确锚点各≥0.95，输出既有information子类型，普通字段仍unknown；此正例要求已见敌方特训组合，不泛化所有信息页。暂离确认、开局选择、过渡和Loading标题图在当前已见开发图缺少普通正例锚点而拒识。
+
+TDD继续使用获准的analyze_capture_archive公开入口。入口、精准战斗、折叠休整、滚动信息页依次unknown→预期类别；精准战斗放宽后盟约说明曾ordinary→新增层数守卫后unknown，折叠休整放宽后天空盒/选中干员曾ordinary→各自守卫后unknown。保护目标说明在旧实现已误报ordinary，守卫后unknown。每项保留显式开发路径和预期类别的公开fixture入口STRONGHOLD_DEVELOPMENT_CLASSIFICATION / STRONGHOLD_DEVELOPMENT_EXPECTED_CATEGORY，检查自身来源和非普通字段隔离。合成回归将已复核开发加载反馈条复制到已复核开发难度图，保留难度页文字；先误报out_of_game，再由加载守卫拒识。该合成图只证明该门控优先级，不充当真实加载准确率证据。
+
+复杂度仍为单帧解码O(pixels+metadata+PNG bytes)、固定数量crop预处理及神经推理；新增固定crop增加推理成本，不作实时性能承诺。额外内存沿用单帧RGB和模型session，无跨帧状态。资金、时间数字及stage推断未扩展识别语义，不据新分类结果宣称后续字段验收通过。
+
+本轮26张已复核开发回代：4张局外、9张普通局内、2张完整信息/结果页语义分类正确；11张按保守契约拒识（loading2、special_setup3、transition1、special_in_game说明/选中/暂离5），0误判，26/26冻结契约匹配，0不适当ordinary。此为调参开发回代，不是独立准确率；报告位于实现worktree的build/ticket02-reviewed-development.json。Release和TestRecognition（合成存档/持久化/CLI异常检查）通过；默认系统临时目录曾有rename AccessDenied，改为worktree build/temp执行通过，不改产品实现。新验证由父集成对话冻结后执行，旧验证失败记录不被本次开发回代替代。

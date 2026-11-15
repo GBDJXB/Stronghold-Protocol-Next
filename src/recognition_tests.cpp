@@ -117,6 +117,38 @@ int run_recognition_tests() {
         std::cout << "state: unknown/null immutable history, moved archive and corrupt/missing/version/resource rejection passed\n";
         // Optional real-development fixture: paths supplied explicitly, never a heldout manifest.
         wchar_t sample[32768]{}, maa[32768]{};
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_LOADING_OVER_DIFFICULTY",sample,32768)) {
+            wchar_t difficulty[32768]{};
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768) ||
+               !GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_DIFFICULTY",difficulty,32768))
+                throw Error("test_failed","Loading overlay fixture requires reviewed difficulty and model paths");
+            const auto loading=load_capture_archive(sample);
+            auto overlaid=load_capture_archive(difficulty).capture;
+            if(loading.capture.frame.width!=1920 || loading.capture.frame.height!=1200 ||
+               overlaid.frame.width!=1920 || overlaid.frame.height!=1200)
+                throw Error("test_failed","Loading overlay fixtures require supported dimensions");
+            // Synthetic regression: preserve menu anchors while adding the reviewed feedback band.
+            for(int y=1088;y<1170;++y) for(int x=1080;x<1450;++x) for(int channel=0;channel<3;++channel)
+                overlaid.frame.rgb[(y*1920+x)*3+channel]=loading.capture.frame.rgb[(y*1920+x)*3+channel];
+            const auto archive=save_capture(overlaid,root);
+            const auto rejected=analyze_capture_archive(archive.directory,maa);
+            if(rejected.category!="unknown" || rejected.source.id!=archive.id || rejected.funds.value || rejected.stage.value || rejected.remaining_time.value)
+                throw Error("test_failed","Loading feedback over difficulty was accepted as a known screen");
+            std::cout << "recognition: synthetic reviewed loading feedback over difficulty rejected\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_CLASSIFICATION",sample,32768)) {
+            wchar_t expected[64]{};
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768) ||
+               !GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_EXPECTED_CATEGORY",expected,64))
+                throw Error("test_failed","Classification fixture requires explicit model root and expected category");
+            const auto classified=analyze_capture_archive(sample,maa);
+            if(classified.category!=utf8(expected) || classified.source.id.empty() ||
+               classified.source.directory!=fs::absolute(sample))
+                throw Error("test_failed","Development classification/source contract failed: "+classified.category);
+            if(classified.category!="ordinary_in_game" && (classified.funds.value || classified.stage.value || classified.remaining_time.value))
+                throw Error("test_failed","Rejected/special view confirmed ordinary fields");
+            std::cout << "recognition: explicit development classification/source contract passed\n";
+        }
         if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_DIFFICULTY",sample,32768)) {
             if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed", "Development fixture requires STRONGHOLD_MAA_ROOT");
             auto classified = analyze_capture_archive(fs::path(sample), fs::path(maa));

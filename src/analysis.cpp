@@ -35,6 +35,12 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
     result.runtime_version = recognizer.runtime_version;
     result.model_sha256 = recognizer.model_sha256;
     result.dictionary_sha256 = recognizer.dictionary_sha256;
+    // Loading feedback can retain perfectly readable menu anchors underneath.
+    const auto feedback=recognizer.read(frame,1086,1095,280,45);
+    result.evidence.push_back("loading_feedback="+feedback.text+";confidence="+std::to_string(feedback.confidence));
+    if(feedback.confidence>=.9 && feedback.text.find("正在提交反馈")!=std::string::npos) {
+        result.reason="unsupported_loading_feedback"; return result;
+    }
     const auto title = recognizer.read(frame,1535,34,275,46);
     const auto start = recognizer.read(frame,1620,1080,240,65);
     result.evidence.push_back("difficulty_title="+title.text+";confidence="+std::to_string(title.confidence));
@@ -48,6 +54,12 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
             result.evidence.push_back(std::string(name)+"="+value.text+";confidence="+std::to_string(value.confidence));
             return value;
         };
+        const auto database=read("entry_database",178,297,170,42);
+        const auto objectives=read("entry_objectives",225,892,142,44);
+        if(database.text=="协议数据库" && database.confidence>=.95 &&
+           objectives.text=="关键目标" && objectives.confidence>=.95) {
+            result.category="out_of_game"; result.reason="protocol_entry_text_anchors"; return result;
+        }
         const auto terminal=read("main_terminal",1290,228,200,111);
         const auto team=read("main_team",974,515,133,79);
         if(terminal.text=="终端" && terminal.confidence>=.8 && team.text=="编队" && team.confidence>=.9) {
@@ -62,6 +74,14 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
             result.category="special_in_game"; result.special_view="information";
             result.reason="information_text_anchors"; return result;
         }
+        const auto info_element=read("information_element",1560,671,211,39);
+        const auto info_hidden=read("information_hidden",1560,747,211,39);
+        if(info_leader.text=="敌方领袖" && info_leader.confidence>=.95 &&
+           info_element.text=="特训敌人·元素" && info_element.confidence>=.95 &&
+           info_hidden.text=="特训敌人·隐匿" && info_hidden.confidence>=.95) {
+            result.category="special_in_game"; result.special_view="information";
+            result.reason="scrolled_information_text_anchors"; return result;
+        }
         const auto result_title=read("result_overlay",1025,548,244,65);
         const auto result_subtitle=read("result_subtitle",1034,616,164,43);
         if(result_title.confidence>=.8 && result_title.text=="作战结束" &&
@@ -73,17 +93,34 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
            (result_subtitle.confidence>=.8 && result_subtitle.text.find("完美作战")!=std::string::npos)) {
             result.reason="unsupported_result_overlay"; return result;
         }
+        const auto attack_range=read("selected_attack_range",190,503,96,31);
+        if(attack_range.text=="攻击范围" && attack_range.confidence>=.95) {
+            result.reason="unsupported_selected_operator"; return result;
+        }
+        const auto resource=read("tooltip_resource",1162,248,99,41);
+        if(resource.text=="天空盒" && resource.confidence>=.95) {
+            result.reason="unsupported_resource_tooltip"; return result;
+        }
+        const auto protection=read("tooltip_protection",1478,200,119,36);
+        if(protection.text=="保护目标" && protection.confidence>=.95) {
+            result.reason="unsupported_goal_tooltip"; return result;
+        }
+        const auto layers=read("tooltip_layers",1419,260,91,37);
+        if(layers.confidence>=.95 && layers.text.find("层数")!=std::string::npos) {
+            result.reason="unsupported_covenant_tooltip"; return result;
+        }
         const auto round=read("round_label",666,34,57,33);
         const auto rest=read("rest_phase",940,30,112,36);
         const auto ready=read("ready",1750,153,120,42);
         const auto refresh=read("refresh",1792,792,69,37);
         const auto close=read("shop_close",1735,1104,78,41);
         if(round.text=="回合" && round.confidence>=.95 && rest.text=="休息一下" && rest.confidence>=.95 &&
-           ready.text=="准备就绪" && ready.confidence>=.95 && refresh.text=="刷新" && refresh.confidence>=.95 &&
-           close.text=="收起" && close.confidence>=.95) {
+           ready.text=="准备就绪" && ready.confidence>=.95 && close.confidence>=.95 &&
+           ((refresh.text=="刷新" && refresh.confidence>=.95 && close.text=="收起") || close.text=="展开")) {
             result.category="ordinary_in_game"; result.reason="stable_rest_text_anchors";
             result.stage={"recognized", "rest", rest.confidence, "stable_rest_phase_text", rest.text, result.model_sha256, result.dictionary_sha256};
             result.remaining_time.reason="no_supported_visible_timer";
+            if(close.text=="展开") { result.funds.reason="shop_collapsed"; return result; }
             NeuralTextRecognizer numeric_recognizer(maa_root,TextModel::Characters);
             result.funds.model_sha256=numeric_recognizer.model_sha256;
             result.funds.dictionary_sha256=numeric_recognizer.dictionary_sha256;
@@ -120,9 +157,11 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
         } else {
             const auto progress=read("enemy_progress",970,27,71,40);
             const auto covenant=read("covenant_label",811,173,55,28);
+            const auto precision=read("covenant_precision",874,171,56,30);
             if(round.text=="回合" && round.confidence>=.95 &&
                std::regex_match(progress.text,std::regex("[0-9]{1,3}/[0-9]{1,3}")) && progress.confidence>=.95 &&
-               covenant.text=="坚守" && covenant.confidence>=.95) {
+               ((covenant.text=="坚守" && covenant.confidence>=.95) ||
+                (precision.text=="精准" && precision.confidence>=.95))) {
                 result.category="ordinary_in_game"; result.reason="combat_text_anchors";
                 const auto waiting=read("waiting_phase",817,1109,378,42);
                 const auto slash=progress.text.find('/');
