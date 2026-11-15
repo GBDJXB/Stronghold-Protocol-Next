@@ -39,12 +39,23 @@ function Check-Record($Record) {
         ($Record.use_for_classifier_evaluation -and $Record.split -cne 'independent_validation')) {
         throw "Contradictory development eligibility: $($Record.sample_id)"
     }
-    if ($null -ne $Record.PSObject.Properties['annotation_status'] -and
-        $Record.annotation_status -cne 'visually_reviewed') {
-        if ($Record.annotation_status -cne 'pending_visual_review' -or
-            $null -ne $Record.candidate_category -or $null -ne $Record.expected_classifier_output -or
-            $Record.use_for_model_development -or $Record.use_for_classifier_evaluation) {
-            throw "Unreviewed sample has labels or eligibility: $($Record.sample_id)"
+    if ($null -ne $Record.PSObject.Properties['annotation_status']) {
+        if ($Record.annotation_status -ceq 'pending_visual_review') {
+            if ($null -ne $Record.candidate_category -or $null -ne $Record.expected_classifier_output -or
+                $Record.use_for_model_development -or $Record.use_for_classifier_evaluation) {
+                throw "Unreviewed sample has labels or eligibility: $($Record.sample_id)"
+            }
+        } elseif ($Record.annotation_status -cnotin @(
+            'visually_reviewed',
+            # Legacy manifest used these explicit prose statuses; curated projections below remain strict.
+            'confirmed_by_user_after_original_image_review', 'confirmed_by_user_and_visual_review',
+            'known_special_view_user_behavior_requirement_recorded',
+            'loading_indicator_supported_by_user_reference_and_visual_review',
+            'supported_by_visual_review', 'supported_by_visual_review_and_user_context',
+            'user_explicitly_confirmed_indicator_and_visually_reviewed',
+            'visually_read_user_confirmed_field_semantics',
+            'visually_reviewed_field_semantics_confirmed_by_user', 'visually_reviewed_user_confirmed_page')) {
+            throw "Unrecognized annotation status: $($Record.sample_id)"
         }
     }
     if ($Record.use_for_model_development -and $Record.use_for_classifier_evaluation) {
@@ -89,11 +100,18 @@ foreach ($index in @($development, $validation)) {
 }
 if ($indexed.Count -ne $byId.Count) { throw 'Indices do not cover every manifest record.' }
 $selected = if ($Split -eq 'development') { $development } else { $validation }
-$selectedRecords = @($selected.samples)
+# Legacy development uses only explicit development eligibility. Legacy validation
+# retains labeled diagnostic rows; only evaluation=true rows enter independent counts.
+# Curated datasets replace this selection with their exact reviewed eligible projection.
+$selectionPolicy = 'legacy-development-eligible-validation-labeled-diagnostics'
+$selectedRecords = @($selected.samples | Where-Object {
+    $null -ne $_.candidate_category -and ($Split -ceq 'validation' -or $_.use_for_model_development)
+})
 $curatedNames = @('curated-development-index.json', 'curated-validation-index.json')
 $curatedCount = @($curatedNames | Where-Object { Test-Path -LiteralPath (Join-Path $DatasetDirectory $_) }).Count
 if ($curatedCount -eq 1) { throw 'Both curated indices are required.' }
 if ($curatedCount -eq 2) {
+    $selectionPolicy = 'curated-reviewed-eligible-only'
     foreach ($name in $curatedNames) {
         $curated = Read-Document $name
         $expectedSplit = if ($name -ceq $curatedNames[0]) { 'development' } else { 'independent_validation' }
@@ -124,8 +142,6 @@ if ($curatedCount -eq 2) {
         if ($curatedIds.Count -ne $eligibleRecords.Count) { throw 'Curated index omits eligible reviewed samples.' }
         if ($selected.split -ceq $expectedSplit) { $selectedRecords = @($curated.samples) }
     }
-} elseif (@($selectedRecords | Where-Object { $null -eq $_.candidate_category }).Count -gt 0) {
-    throw 'Unreviewed records require curated indices.'
 }
 $rows = foreach ($record in $selectedRecords) {
     $text = & $Executable analyze-archive --archive $record.archive_directory --maa-root $MaaRoot
@@ -172,6 +188,7 @@ $report = [ordered]@{
     executable_sha256 = (Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash
     manifest_sha256 = (Get-FileHash -LiteralPath (Join-Path $DatasetDirectory 'manifest.json') -Algorithm SHA256).Hash
     mapping_policy = 'ticket06-information-result-v2'
+    selection_policy = $selectionPolicy
     scope = '1920x1200 offline archives; supported information/result views map to special_in_game; loading and other pending special/setup/transition mappings reject to unknown. Counts are frames, not independent scenes.'
     evaluated_archives = @($rows).Count; external_images_not_analyzed = @(External-Records $selected).Count
     unreviewed_archives_excluded = @($selected.samples | Where-Object { $null -eq $_.candidate_category }).Count
