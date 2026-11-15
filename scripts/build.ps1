@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot),
-    [switch]$Test
+    [switch]$Test,
+    [switch]$TestRecognition
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,4 +27,9 @@ if ($Test) {
     $testScript = Join-Path $PSScriptRoot 'test.ps1'
     & $testScript -RepositoryRoot $RepositoryRoot
     if ($LASTEXITCODE -ne 0) { throw "Test script failed with exit code $LASTEXITCODE" }
+}
+
+if ($TestRecognition) {
+    & (Join-Path $RepositoryRoot 'build\x64\Release\stronghold-capture.exe') --self-test-recognition
+    if ($LASTEXITCODE -ne 0) { throw "Recognition tests failed with exit code $LASTEXITCODE" }
 }
