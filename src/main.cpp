@@ -1,6 +1,7 @@
 #include "internal.hpp"
 #include "stronghold/recognition.hpp"
 #include "stronghold/analysis.hpp"
+#include "stronghold/state.hpp"
 namespace stronghold { int run_recognition_tests(); }
 
 #include <Windows.h>
@@ -45,6 +46,8 @@ void help() {
         "stronghold-capture --check-backend\n"
         "stronghold-capture --self-test\n"
         "stronghold-capture analyze-archive --archive <directory> --maa-root <MAA installation>\n"
+        "    [--state-output <directory>]\n"
+        "stronghold-capture inspect-state --record <file>\n"
         "stronghold-capture inspect-archive --archive <directory>\n"
         "stronghold-capture --self-test-recognition\n"
         "Captures an opaque, unobscured Arknights client area; focus is not required. No game inputs.\n";
@@ -76,10 +79,12 @@ int wmain(int argc, wchar_t** argv) {
             return 0;
         }
         if (std::wstring(argv[1]) == L"analyze-archive") {
-            if(argc != 6 || std::wstring(argv[2]) != L"--archive" || std::wstring(argv[4]) != L"--maa-root")
+            if((argc != 6 && argc != 8) || std::wstring(argv[2]) != L"--archive" || std::wstring(argv[4]) != L"--maa-root" || (argc==8 && std::wstring(argv[6])!=L"--state-output"))
                 throw Error("invalid_argument", "analyze-archive requires --archive <directory> --maa-root <installation>.");
             const auto result = analyze_capture_archive(argv[3],argv[5]);
+            const auto state_file=argc==8?save_state_record(result,argv[7]):fs::path{};
             std::cout << "{\"ok\":true,\"frame_id\":" << quote_json(result.source.id)
+                << ",\"state_record\":" << (state_file.empty()?"null":quote_json(utf8(state_file.wstring())))
                 << ",\"directory\":" << quote_json(utf8(result.source.directory.wstring()))
                 << ",\"observation_status\":\"historical\",\"category\":" << quote_json(result.category)
                 << ",\"reason\":" << quote_json(result.reason)
@@ -99,6 +104,10 @@ int wmain(int argc, wchar_t** argv) {
                 << ",\"dictionary_sha256\":" << quote_json(result.funds.dictionary_sha256)
                 << "},\"metadata\":" << result.source.metadata_json << "}\n";
             return 0;
+        }
+        if (std::wstring(argv[1]) == L"inspect-state") {
+            if(argc!=4 || std::wstring(argv[2])!=L"--record") throw Error("invalid_argument","inspect-state requires --record <file>.");
+            std::cout << "{\"ok\":true,\"state\":" << state_record_json(load_state_record(argv[3])) << "}\n"; return 0;
         }
         if (std::wstring(argv[1]) == L"inspect-archive") {
             if(argc != 4 || std::wstring(argv[2]) != L"--archive" || std::wstring(argv[3]).empty())
