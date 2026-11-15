@@ -2,9 +2,9 @@
 
 ## 冻结的保守映射
 
-本票有限首版输出 `ordinary_in_game`、`out_of_game`、`unknown`。当前加载分类尚不支持：安全契约要求真实 loading 返回 unknown；实际是否满足须由冻结后的独立样本核验，不能由有限文本规则推导普遍保证。返回 unknown 仅计拒识，不计 loading 分类正确。
+当前有限实现输出 `ordinary_in_game`、`out_of_game`、`special_in_game`、`unknown`。当前加载分类尚不支持：安全契约要求真实 loading 返回 unknown；实际是否满足须由冻结后的独立样本核验，不能由有限文本规则推导普遍保证。返回 unknown 仅计拒识，不计 loading 分类正确。
 
-- 信息页 S016、结果覆盖层 S034/S035、开局选择 S051–S054：unknown。
+- 开发信息页 S016、结果覆盖层 S034/S035：`special_in_game`，`special_view` 分别为 `information` / `result`。开局选择 S051–S054 尚不支持，目标仍为 unknown；未查看这些预留图片或据其结果调参。
 - 不稳定过渡 S018/S036：unknown；不借地图或 HUD 把过渡确认成普通局内。
 - 这些映射是输出契约，不改变素材真实类别、分组、原图和人工字段语义。
 - 未覆盖分辨率返回 unknown。首批只覆盖 1920×1200；近重复帧不代表独立场景。
@@ -41,8 +41,8 @@ C++ 入口 `analyze_capture_archive` 返回 Analysis，保留完整 LoadedCaptur
 - 局外：难度页精确识别「请选择模拟难度」与「开始模拟」（各平均 CTC 字符置信度 ≥0.95）；主菜单同时识别「终端」（≥0.80）和「编队」（≥0.90）。
 - 普通休整：必须同时识别回合标签、休息一下、准备就绪、刷新、收起（各 ≥0.95）；不从单一 HUD 存在下结论。
 - 普通战斗：必须同时识别回合标签、形如数字/数字的敌人进度和当前布局的「坚守」盟约标签（各 ≥0.95）。这里不解析字段值；其他盟约布局可拒识，不宣称通用战斗分类。
-- 在普通局内判定前读取开发结果层的两个独立文本区域。任一高置信「作战结束」或「完美作战」使结果 unknown，即便顶部 HUD 仍存在。
-- 信息页、过渡缺少这些正向证据而拒识。未知加载设计、其他特殊覆盖、语言、地图与 UI 改版仍可能误判，不能把有限文本 veto 当成通用覆盖层检测器。
+- 在普通局内判定前读取开发结果层的两个独立文本区域。两者满足当前正例契约时输出特殊结果层；只有一个高置信锚点时仍 veto 为 unknown，即便顶部 HUD 仍存在。
+- 信息页使用下述独立正例锚点；过渡缺少稳定普通局内正向证据而拒识。未知加载设计、其他特殊覆盖、语言、地图与 UI 改版仍可能误判，不能把有限文本 veto 当成通用覆盖层检测器。
 
 CTC confidence 是网络字符概率的均值，不是校准后的画面分类概率。evidence 包括实际文字与该均值，方便审计；不据开发置信度推导真实准确率。
 
@@ -77,3 +77,23 @@ TDD 公开入口：S015资金4先在默认 unknown 时 red，再由原生识别 
 开发组合检查：S015=4、S017=0、S020战斗资金unknown、S036过渡分类和资金unknown、S001局外资金unknown，以及上述三个派生软件 fixture 和原有存档异常测试全部通过。真实开发 fixture 由 STRONGHOLD_DEVELOPMENT_FUNDS_FOUR / STRONGHOLD_DEVELOPMENT_FUNDS_ZERO 显式指定目录；默认 suite 不读游戏图片。不读取预留图片／结果调参，S055待父集成对话冻结后独立评估。自然不可读资金、其他数值／地图／布局／分辨率、独立场景统计准确率、真实游戏采集测试均未验收；ticket02加载分类仍未完整支持，不据本票宣称整体规格完成。
 
 增加的固定区域扫描 O(crop pixels)，CTC 完整解码 O(T×C)，另含单次字符模型加载／推理；T 为输出步数、C 为字典类别数。内存含额外字符模型 session、输入／logits；NumericObservation 本身 O(text bytes)，不缓存额外帧。不为当前单次离线分析引入长生命周期模型缓存。
+
+
+## Ticket06：有限特殊画面与状态隔离
+
+本轮冻结映射将 development 信息页与结果覆盖层支持为 special_in_game；其他过渡、开局选择和未支持加载仍目标 unknown。不改写原始人工标注、manifest、分组或 expected_classifier_output=null。评估 runner 的派生政策 `ticket06-information-result-v2` 仅将 candidate_special_in_game 中信息页／战斗结果语义映射为 special_in_game；报告 schema3 包含特殊类别计数。真实类别的 unknown 仍计 rejected；frozen_contract_match 单独表达安全契约，不把拒识充当正确分类。
+
+信息页要求三个独立神经文本精确匹配，平均 CTC 字符概率各≥0.95：核心盟约（108,192,165,49）、附加盟约（108,507,165,48）、敌方领袖（1594,485,160,42）。开发 S016 实际为0.973579、0.999140、0.999504。不是根据地图缩略图判定，也不声称已提取盟约、Boss 或敌人数据。
+
+结果覆盖层要求现有两个区域同时提供证据：作战结束精确匹配、另一行包含完美作战，各≥0.8。S035 实际0.999253与0.997958。任一旧 veto 锚点存在而另一锚点不足时返回 unknown，禁止落入残留普通 HUD 的判定路径。
+
+特殊页在普通字段提取前返回。资金保持 unknown/null，无历史值搬运；每份 Analysis 自带独立 LoadedCapture。`special_view` 在 CLI、StateRecord 和状态 JSON 中保留，非特殊类别须为空，特殊类别只接受 information/result。状态 schema2 显式要求该字段，旧 schema1 明确 state_version 拒绝，不静默补造字段。本轮与 ticket05 属同一未发布 schema2 扩展，最终字段以合并后的契约为准。
+
+TDD 使用已批准公开 analyze/save/load seam：开发 S016 在分类实现前首先失败；加入三锚点后分类通过。随后同一真实开发信息页保存测试因 state_invalid category 首先失败，加入类别、子类型严格读写后通过。S034/S035 同一公开测试通过；特殊快照重读保持 historical、自身 frame_id 与 unknown 资金，并断言先前资金4的快照及旧 frame_id 不变。默认合成存档/状态异常测试亦通过。环境变量 STRONGHOLD_DEVELOPMENT_SPECIAL 显式选择开发存档，不扫描预留组。
+
+未覆盖：干员选中偏移视角、敌人待命地图、其他信息页／结果类型、开局选择2/3与3/3、未知负例、自然模糊遮挡、其他布局/分辨率、加载分类。没有素材就保留不支持，不构造虚假验收。当前仅支持上述固定1920×1200布局；这些开发检查不是独立准确率或实机采集验收。无游戏输入。
+
+新增三个固定文本 crop，每帧仍为单帧解码、固定数量 crop 与模型推理；复杂度沿用前述 O(pixels+metadata+PNG bytes) 及模型推理成本。状态快照为不可变历史，无前帧缓存或覆盖写入。
+
+
+本轮35张开发存档通过逐图公开CLI运行（只读 development-index）：16 ordinary_in_game、13 out_of_game、3 special_in_game（S016 information、S034/S035 result）、3 unknown（S018/S019/S036）。三个特殊页资金均 unknown。报告保存在实现 worktree 的 build/ticket06-development.json，不纳入提交；不是独立评估。没有读取预留图像或结果。

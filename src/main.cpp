@@ -87,6 +87,7 @@ int wmain(int argc, wchar_t** argv) {
                 << ",\"state_record\":" << (state_file.empty()?"null":quote_json(utf8(state_file.wstring())))
                 << ",\"directory\":" << quote_json(utf8(result.source.directory.wstring()))
                 << ",\"observation_status\":\"historical\",\"category\":" << quote_json(result.category)
+                << ",\"special_view\":" << quote_json(result.special_view)
                 << ",\"reason\":" << quote_json(result.reason)
                 << ",\"recognizer_version\":" << quote_json(result.recognizer_version)
                 << ",\"runtime_version\":" << quote_json(result.runtime_version)

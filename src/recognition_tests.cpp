@@ -62,7 +62,7 @@ int run_recognition_tests() {
             content.replace(pos,from.size(),to);std::ofstream out(corrupt,std::ios::binary|std::ios::trunc);out<<content;out.close();
             state_error(code,[&]{load_state_record(corrupt);});
         };
-        bad_state("\"schema_version\":1","\"schema_version\":99","state_version");
+        bad_state("\"schema_version\":2","\"schema_version\":99","state_version");
         bad_state("\"value\":4","\"value\":null","state_invalid");
         bad_state("source_frame","missing_source_frame","state_invalid");
         bad_state("process_created","missing_process_created","state_invalid");
@@ -103,6 +103,35 @@ int run_recognition_tests() {
             const auto classified=analyze_capture_archive(sample,maa);
             if(classified.category!="ordinary_in_game" || classified.funds.status!="unknown" || classified.funds.value) throw Error("test_failed","Combat cost was confused with funds or combat not recognized");
             std::cout << "recognition: stable development combat passed\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_SPECIAL",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            wchar_t previous_path[32768]{};
+            fs::path previous_file;
+            std::string previous_frame;
+            if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_FUNDS_FOUR",previous_path,32768)) {
+                const auto previous=analyze_capture_archive(previous_path,maa);
+                if(previous.funds.value!=4) throw Error("test_failed","Previous development funds4 fixture unreadable");
+                previous_frame=previous.source.id;
+                previous_file=save_state_record(previous,root/L"special-history");
+            }
+            const auto special=analyze_capture_archive(sample,maa);
+            if(special.category!="special_in_game" || special.funds.status!="unknown" || special.funds.value || special.source.id.empty())
+                throw Error("test_failed","Supported development special view was not recognized with unknown ordinary fields and own source");
+            if(special.special_view!="information" && special.special_view!="result")
+                throw Error("test_failed","Special subtype missing");
+            const auto special_file=save_state_record(special,root/L"special-history");
+            const auto historical=load_state_record(special_file);
+            if(historical.category!="special_in_game" || historical.special_view!=special.special_view ||
+               historical.frame_id!=special.source.id || historical.funds.value || historical.observation_status!="historical" ||
+               load_state_record(record_file).funds.value!=4 || load_state_record(record_file).frame_id!=saved.id)
+                throw Error("test_failed","Special historical snapshot lost subtype/source or confirmed ordinary fields");
+            if(!previous_file.empty()) {
+                const auto previous=load_state_record(previous_file);
+                if(previous.funds.value!=4 || previous.frame_id!=previous_frame || previous.frame_id==historical.frame_id)
+                    throw Error("test_failed","Special view overwrote previous ordinary funds/source");
+            }
+            std::cout << "recognition: supported development special view passed\n";
         }
         if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_UNSUPPORTED",sample,32768)) {
             if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
