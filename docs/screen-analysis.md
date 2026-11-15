@@ -2,7 +2,7 @@
 
 ## 冻结的保守映射
 
-当前有限实现输出 `ordinary_in_game`、`out_of_game`、`special_in_game`、`unknown`。当前加载分类尚不支持：安全契约要求真实 loading 返回 unknown；实际是否满足须由冻结后的独立样本核验，不能由有限文本规则推导普遍保证。返回 unknown 仅计拒识，不计 loading 分类正确。
+当前有限实现输出 `ordinary_in_game`、`out_of_game`、`special_in_game`、`unknown`。当前加载分类尚不支持：安全契约要求真实 loading 返回 unknown；冻结评估中 S049/S050 实际误报 out_of_game，该契约未通过，见 [本轮验证](state-recognition-validation.md)。返回 unknown 仅计拒识，不计 loading 分类正确。
 
 - 开发信息页 S016、结果覆盖层 S034/S035：`special_in_game`，`special_view` 分别为 `information` / `result`。开局选择 S051–S054 尚不支持，目标仍为 unknown；未查看这些预留图片或据其结果调参。
 - 不稳定过渡 S018/S036：unknown；不借地图或 HUD 把过渡确认成普通局内。

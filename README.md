@@ -55,6 +55,8 @@ C++ 调用入口为 `stronghold::load_capture_archive`，见 `include/stronghold
 
 运行时和模型来自显式指定的可信本地安装，项目不重新分发这些文件。局部检查仍为 `pwsh -File scripts/build.ps1 -TestRecognition`；真实开发正例通过文档列出的环境变量显式选入，默认不读取真实 captures。独立样本评估使用 `scripts/evaluate-recognition.ps1`，开发与验证的用途分离，未知拒识不充当 loading 分类成功。
 
+当前未通过完整识别验收：预留组两张加载被误报为局外，第二局资金 4 被守卫拒识。阶段／时间／资金不会以旧值补齐。逐图结果、已完成检查和补样要求见 [本轮验证结果](docs/state-recognition-validation.md)。
+
 历史状态持久化与重新读取见 [docs/state-records.md](docs/state-records.md)。
 
 离线分类与普通局内字段分析现已提供有限的 1920×1200 支持范围（普通休整/战斗/战后等待、局外菜单/难度页、特殊信息页/结果覆盖层），参见 [核心字段识别](docs/core-field-recognition.md) 和 [历史状态记录](docs/state-records.md)。支持范围及尚未验证事项以对应文档为准。
