@@ -32,4 +32,5 @@ if ($Test) {
 if ($TestRecognition) {
     & (Join-Path $RepositoryRoot 'build\x64\Release\stronghold-capture.exe') --self-test-recognition
     if ($LASTEXITCODE -ne 0) { throw "Recognition tests failed with exit code $LASTEXITCODE" }
+    & (Join-Path $PSScriptRoot 'test-state-cli.ps1') -RepositoryRoot $RepositoryRoot
 }

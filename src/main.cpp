@@ -122,7 +122,8 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (std::wstring(argv[1]) == L"inspect-state") {
             if(argc!=4 || std::wstring(argv[2])!=L"--record") throw Error("invalid_argument","inspect-state requires --record <file>.");
-            std::cout << "{\"ok\":true,\"state\":" << state_record_json(load_state_record(argv[3])) << "}\n"; return 0;
+            const auto state_json=state_record_json(load_state_record(argv[3]));
+            std::cout << "{\"ok\":true,\"state\":" << state_json << "}\n"; return 0;
         }
         if (std::wstring(argv[1]) == L"inspect-archive") {
             if(argc != 4 || std::wstring(argv[2]) != L"--archive" || std::wstring(argv[3]).empty())
