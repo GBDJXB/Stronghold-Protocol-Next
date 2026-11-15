@@ -8,6 +8,7 @@
 
 - schema 2、WGC backend、RGB8、单帧原始 24-bit RGB/BGR PNG；不将 alpha、palette、灰度或其他格式自动转换为成功。
 - 检查所有现有必需字段及类型、有限非负时长、整数范围、规范 UTC 时间和日历日期，raw 尺寸必须等于 source client 与 PNG 尺寸；检查 `performance.png_bytes` 与文件长度。
+- 来源时间与存档时新鲜度必须符合 writer 语义：`time:null` 仅允许 `unknown` 和 null age；非 null 时间必须为正 int64 十进制字符串，并带非负 age，age ≤ 1000 ms 为 `fresh`，更大为 `stale`。数值 age 0 不等于 null，时间字符串 `"0"` 不等于无时间；矛盾组合返回 `archive_metadata_invalid`。
 - 仅允许 `raw.path` 为字面值 `raw.png`。两个输入文件必须为普通文件且无 reparse point；不读取 metadata 指定的其他路径。调用者指定的目录可位于其选择的位置。
 - metadata 最多 1 MiB；压缩 PNG 最多 128 MiB；单边最多 16384 像素、总量最多 33554432 像素（解码 RGB 最多 96 MiB）。WIC 自身还有解码内部开销。读取复杂度为 O(metadata bytes + PNG bytes + pixels)，主要应用内存为 O(metadata bytes + pixels)。上限用于限制离线输入，非性能目标。
 - Windows.Data.Json 将 JSON number 表示为 double。数值型 HWND、occluding HWND 和性能计数仅接受 0..2^53-1 的整数，超过范围拒绝，避免静默舍入；pid 保持 uint32。schema 的时间/进程创建标识是十进制字符串，不受 double 精度限制。未知附加字段保留在原始 JSON 中。
@@ -42,3 +43,5 @@ TDD vertical slices（经本地 Release 构建执行）：
 未验证：真实游戏存档、识别准确率、其他 schema/图像格式、长期并发负载与恶意文件并发替换；本票不提供 classifier、OCR 或状态持久化。
 
 最后局部检查：Release 构建与 `-TestRecognition` 通过；独立生成 RGB PNG + schema 2 JSON 的 CLI fixture 返回 `ok:true`、`historical`、2×1 / 6 RGB bytes；缺失目录返回 `archive_metadata_missing`。`git diff --check` 通过。
+
+Review 修复验证：合成 `time:null / fresh / age:2000` 首先触发 red（reader 未抛出预期 `archive_metadata_invalid`）；加入来源时间、新鲜度与 age 一致性检查后，同一用例 green。局部 Release 构建及 `-TestRecognition` 通过，新增覆盖 null、时间字符串 `"0"`、age 0、1000 和 1000.001 ms 的合法及矛盾组合。未读取真实 captures、未操作游戏、未运行 capture worker suite。

@@ -40,6 +40,37 @@ int run_recognition_tests() {
         changed("\"time\":\"1\"", "\"time\":\"\"");
         expect_error("archive_metadata_invalid", [&]{ load_capture_archive(saved.directory); });
         std::cout << "recognition: empty source timestamp rejected\n";
+        auto timing = [&](const std::string& time, const std::string& freshness, const std::string& age) {
+            auto value=loaded.metadata_json;
+            const auto start=value.find("\"source_frame\":");
+            const auto end=value.find(",\"window\":",start);
+            if(start==std::string::npos || end==std::string::npos) throw Error("test_failed","Timing fixture not found");
+            value.replace(start,end-start,"\"source_frame\":{\"clock\":\"qpc\",\"unit\":\"100ns\",\"time\":"+time+"},\"frame_freshness\":\""+freshness+"\",\"frame_age_ms_at_archive_check\":"+age);
+            write(value);
+        };
+        timing("null","fresh","2000");
+        expect_error("archive_metadata_invalid", [&]{ load_capture_archive(saved.directory); });
+        std::cout << "recognition: contradictory source timing rejected\n";
+        for(const auto& age : {"0", "1000"}) {
+            timing("\"1\"","fresh",age);
+            if(load_capture_archive(saved.directory).capture.frame.source_time_100ns!=1)
+                throw Error("test_failed","Valid fresh timing lost source association");
+        }
+        timing("\"1\"","stale","1000.001");
+        load_capture_archive(saved.directory);
+        timing("null","unknown","null");
+        if(load_capture_archive(saved.directory).capture.frame.source_time_100ns!=0)
+            throw Error("test_failed","Null source timing did not remain unavailable");
+        struct InvalidTiming { const char* time; const char* freshness; const char* age; };
+        for(const auto& value : {
+                InvalidTiming{"null","unknown","0"}, {"null","fresh","null"}, {"null","stale","null"},
+                {"\"0\"","unknown","null"}, {"\"0\"","fresh","0"},
+                {"\"1\"","unknown","null"}, {"\"1\"","unknown","0"}, {"\"1\"","fresh","null"},
+                {"\"1\"","stale","1000"}, {"\"1\"","fresh","1000.001"}, {"\"1\"","fresh","-1"}}) {
+            timing(value.time,value.freshness,value.age);
+            expect_error("archive_metadata_invalid", [&]{ load_capture_archive(saved.directory); });
+        }
+        std::cout << "recognition: source timing null/zero and freshness boundaries passed\n";
         changed("\"schema_version\":2,", "");
         expect_error("archive_metadata_invalid", [&]{ load_capture_archive(saved.directory); });
         changed("\"schema_version\":2", "\"schema_version\":3");

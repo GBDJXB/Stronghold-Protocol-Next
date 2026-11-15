@@ -134,9 +134,17 @@ LoadedCapture load_capture_archive(const fs::path& directory) {
         if(text(source,"clock") != "qpc" || text(source,"unit") != "100ns") invalid("source_frame");
         const auto time=decimal(source,"time",true);
         if(time>static_cast<std::uint64_t>(INT64_MAX)) invalid("source_frame.time");
+        const bool has_time=member(source,"time",JsonValueType::String,true).ValueType()!=JsonValueType::Null;
+        if(has_time && time==0) invalid("source_frame.time");
         auto freshness=text(root,"frame_freshness");
-        if(freshness!="fresh" && freshness!="stale" && freshness!="unknown") invalid("frame_freshness");
-        nonnegative(root,"frame_age_ms_at_archive_check",true);
+        const auto age_value=member(root,"frame_age_ms_at_archive_check",JsonValueType::Number,true);
+        if(!has_time) {
+            if(freshness!="unknown" || age_value.ValueType()!=JsonValueType::Null) invalid("source_frame timing");
+        } else {
+            if(age_value.ValueType()==JsonValueType::Null) invalid("frame_age_ms_at_archive_check");
+            const double age=number(root,"frame_age_ms_at_archive_check");
+            if(age<0 || freshness!=(age<=1000.0 ? "fresh" : "stale")) invalid("source_frame timing");
+        }
         auto w=object(root,"window"); auto& window=c.window;
         window.hwnd=integer(w,"hwnd",0,9007199254740991.0); window.pid=static_cast<std::uint32_t>(integer(w,"pid",0,UINT32_MAX));
         window.process_created=decimal(w,"process_created",true);
