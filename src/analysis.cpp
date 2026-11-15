@@ -29,8 +29,22 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
         if(terminal.text=="终端" && terminal.confidence>=.8 && team.text=="编队" && team.confidence>=.9) {
             result.category="out_of_game"; result.reason="main_menu_text_anchors"; return result;
         }
+        const auto info_core=read("information_core",108,192,165,49);
+        const auto info_additional=read("information_additional",108,507,165,48);
+        const auto info_leader=read("information_leader",1594,485,160,42);
+        if(info_core.text=="核心盟约" && info_core.confidence>=.95 &&
+           info_additional.text=="附加盟约" && info_additional.confidence>=.95 &&
+           info_leader.text=="敌方领袖" && info_leader.confidence>=.95) {
+            result.category="special_in_game"; result.special_view="information";
+            result.reason="information_text_anchors"; return result;
+        }
         const auto result_title=read("result_overlay",1025,548,244,65);
         const auto result_subtitle=read("result_subtitle",1034,616,164,43);
+        if(result_title.confidence>=.8 && result_title.text=="作战结束" &&
+           result_subtitle.confidence>=.8 && result_subtitle.text.find("完美作战")!=std::string::npos) {
+            result.category="special_in_game"; result.special_view="result";
+            result.reason="result_text_anchors"; return result;
+        }
         if((result_title.confidence>=.8 && result_title.text.find("作战结束")!=std::string::npos) ||
            (result_subtitle.confidence>=.8 && result_subtitle.text.find("完美作战")!=std::string::npos)) {
             result.reason="unsupported_result_overlay"; return result;

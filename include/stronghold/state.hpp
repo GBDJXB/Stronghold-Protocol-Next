@@ -6,7 +6,7 @@ struct StateRecord {
     std::string id, saved_at, observation_status = "historical";
     std::string frame_id, source_metadata_json, request_start, request_end;
     fs::path source_directory;
-    std::string category, reason, recognizer_version, runtime_version, model_sha256, dictionary_sha256;
+    std::string category, special_view, reason, recognizer_version, runtime_version, model_sha256, dictionary_sha256;
     std::vector<std::string> evidence;
     NumericObservation funds;
 };

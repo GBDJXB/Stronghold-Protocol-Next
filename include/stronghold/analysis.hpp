@@ -27,9 +27,9 @@ struct NumericObservation {
 struct Analysis {
     NumericObservation funds;
     LoadedCapture source;
-    std::string category = "unknown", reason;
+    std::string category = "unknown", special_view, reason;
     std::vector<std::string> evidence;
-    std::string recognizer_version = "maa-text-screen-funds-v2", runtime_version, model_sha256, dictionary_sha256;
+    std::string recognizer_version = "maa-text-special-v3", runtime_version, model_sha256, dictionary_sha256;
 };
 Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_root);
 }

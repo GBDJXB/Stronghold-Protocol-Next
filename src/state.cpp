@@ -37,7 +37,10 @@ void validate(const StateRecord& r) {
     if(r.observation_status!="historical") invalid("observation_status");
     timestamp(r.saved_at); timestamp(r.request_start); timestamp(r.request_end);
     if(r.request_end<r.request_start) invalid("request_end");
-    if(r.category!="unknown"&&r.category!="ordinary_in_game"&&r.category!="out_of_game") invalid("category");
+    if(r.category!="unknown"&&r.category!="ordinary_in_game"&&r.category!="out_of_game"&&r.category!="special_in_game") invalid("category");
+    if(r.category=="special_in_game") {
+        if(r.special_view!="information"&&r.special_view!="result") invalid("special_view");
+    } else if(!r.special_view.empty()) invalid("special_view");
     if(r.recognizer_version.empty()||r.reason.empty()) invalid("recognizer/reason");
     digest(r.model_sha256); digest(r.dictionary_sha256); digest(r.funds.model_sha256); digest(r.funds.dictionary_sha256);
     const auto& f=r.funds;
@@ -66,17 +69,17 @@ void validate(const StateRecord& r) {
 }
 std::string serialize(const StateRecord& r) {
     const auto& f=r.funds;
-    std::string s="{\"schema_version\":1,\"id\":"+quote_json(r.id)+",\"saved_at\":"+quote_json(r.saved_at)+",\"observation_status\":\"historical\",\"source\":{\"frame_id\":"+quote_json(r.frame_id)+",\"directory\":"+quote_json(utf8(r.source_directory.wstring()))+",\"request_start\":"+quote_json(r.request_start)+",\"request_end\":"+quote_json(r.request_end)+",\"metadata_json\":"+quote_json(r.source_metadata_json)+"},\"category\":"+quote_json(r.category)+",\"reason\":"+quote_json(r.reason)+",\"recognizer_version\":"+quote_json(r.recognizer_version)+",\"runtime_version\":"+quote_json(r.runtime_version)+",\"model_sha256\":"+quote_json(r.model_sha256)+",\"dictionary_sha256\":"+quote_json(r.dictionary_sha256)+",\"funds\":{\"status\":"+quote_json(f.status)+",\"value\":"+(f.value?std::to_string(*f.value):"null")+",\"confidence\":"+std::to_string(f.confidence)+",\"reason\":"+quote_json(f.reason)+",\"raw_text\":"+quote_json(f.raw_text)+",\"model_sha256\":"+quote_json(f.model_sha256)+",\"dictionary_sha256\":"+quote_json(f.dictionary_sha256)+"},\"evidence\":[";
+    std::string s="{\"schema_version\":2,\"id\":"+quote_json(r.id)+",\"saved_at\":"+quote_json(r.saved_at)+",\"observation_status\":\"historical\",\"source\":{\"frame_id\":"+quote_json(r.frame_id)+",\"directory\":"+quote_json(utf8(r.source_directory.wstring()))+",\"request_start\":"+quote_json(r.request_start)+",\"request_end\":"+quote_json(r.request_end)+",\"metadata_json\":"+quote_json(r.source_metadata_json)+"},\"category\":"+quote_json(r.category)+",\"special_view\":"+quote_json(r.special_view)+",\"reason\":"+quote_json(r.reason)+",\"recognizer_version\":"+quote_json(r.recognizer_version)+",\"runtime_version\":"+quote_json(r.runtime_version)+",\"model_sha256\":"+quote_json(r.model_sha256)+",\"dictionary_sha256\":"+quote_json(r.dictionary_sha256)+",\"funds\":{\"status\":"+quote_json(f.status)+",\"value\":"+(f.value?std::to_string(*f.value):"null")+",\"confidence\":"+std::to_string(f.confidence)+",\"reason\":"+quote_json(f.reason)+",\"raw_text\":"+quote_json(f.raw_text)+",\"model_sha256\":"+quote_json(f.model_sha256)+",\"dictionary_sha256\":"+quote_json(f.dictionary_sha256)+"},\"evidence\":[";
     for(size_t i=0;i<r.evidence.size();++i) {if(i)s+=',';s+=quote_json(r.evidence[i]);} return s+"]}";
 }
 StateRecord parse(const std::string& content) {
     try {
         auto o=JsonObject::Parse(winrt::hstring(wide(content)));
-        if(number(o,"schema_version")!=1) throw Error("state_version","Only state schema 1 is supported");
+        if(number(o,"schema_version")!=2) throw Error("state_version","Only state schema 2 is supported");
         StateRecord r;
         r.id=text(o,"id");r.saved_at=text(o,"saved_at");r.observation_status=text(o,"observation_status");
         auto source=object(o,"source");r.frame_id=text(source,"frame_id");r.source_directory=wide(text(source,"directory"));r.source_metadata_json=text(source,"metadata_json");r.request_start=text(source,"request_start");r.request_end=text(source,"request_end");
-        r.category=text(o,"category");r.reason=text(o,"reason");r.recognizer_version=text(o,"recognizer_version");r.runtime_version=text(o,"runtime_version");r.model_sha256=text(o,"model_sha256");r.dictionary_sha256=text(o,"dictionary_sha256");
+        r.category=text(o,"category");r.special_view=text(o,"special_view");r.reason=text(o,"reason");r.recognizer_version=text(o,"recognizer_version");r.runtime_version=text(o,"runtime_version");r.model_sha256=text(o,"model_sha256");r.dictionary_sha256=text(o,"dictionary_sha256");
         auto f=object(o,"funds");r.funds.status=text(f,"status");r.funds.confidence=number(f,"confidence");r.funds.reason=text(f,"reason");r.funds.raw_text=text(f,"raw_text");r.funds.model_sha256=text(f,"model_sha256");r.funds.dictionary_sha256=text(f,"dictionary_sha256");
         if(!f.HasKey(L"value")) invalid("funds.value");
         auto v=f.GetNamedValue(L"value");
@@ -93,7 +96,7 @@ std::string state_record_json(const StateRecord& record) { auto content=serializ
 fs::path save_state_record(const Analysis& a,const fs::path& output) {
     if(a.source.directory.empty()) invalid("source.directory");
     StateRecord r;r.id=unique_id();r.saved_at=utc_now();r.frame_id=a.source.id;r.source_directory=fs::absolute(a.source.directory);r.source_metadata_json=a.source.metadata_json;
-    r.request_start=a.source.capture.requested_at;r.request_end=a.source.capture.completed_at;r.category=a.category;r.reason=a.reason;r.recognizer_version=a.recognizer_version;r.runtime_version=a.runtime_version;r.model_sha256=a.model_sha256;r.dictionary_sha256=a.dictionary_sha256;r.evidence=a.evidence;r.funds=a.funds;
+    r.request_start=a.source.capture.requested_at;r.request_end=a.source.capture.completed_at;r.category=a.category;r.special_view=a.special_view;r.reason=a.reason;r.recognizer_version=a.recognizer_version;r.runtime_version=a.runtime_version;r.model_sha256=a.model_sha256;r.dictionary_sha256=a.dictionary_sha256;r.evidence=a.evidence;r.funds=a.funds;
     // Reuse the public-load validation contract before any filesystem mutation.
     const auto content=serialize(r);if(content.size()>record_limit) throw Error("state_resource_limit","State exceeds size limit");parse(content);
     std::error_code ec;fs::create_directories(output,ec);if(ec) throw Error("state_io","Cannot create state output directory");

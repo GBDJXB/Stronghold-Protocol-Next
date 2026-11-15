@@ -53,7 +53,7 @@ foreach ($record in $records) {
     $byId[$record.sample_id] = $record
 }
 foreach ($record in $manifest.samples) {
-    foreach ($name in @('frame_id', 'archive_directory', 'scene_group')) { Require-Property $record $name }
+    foreach ($name in @('frame_id', 'archive_directory', 'scene_group', 'category_detail')) { Require-Property $record $name }
     if ([string]::IsNullOrWhiteSpace($record.frame_id) -or $frameIds.ContainsKey($record.frame_id)) {
         throw "Missing or duplicate frame_id: $($record.sample_id)"
     }
@@ -86,8 +86,12 @@ $rows = foreach ($record in $selected.samples) {
     if ($analysis.category -notin @('ordinary_in_game', 'out_of_game', 'loading', 'unknown', 'special_in_game', 'special_setup')) {
         throw "Unrecognized classifier output: $($analysis.category)"
     }
-    # This release rejects pending special/transition mappings; retain the original semantic label.
-    $target = if ($null -eq $record.expected_classifier_output) { 'unknown' } else { $record.expected_classifier_output }
+    # Frozen ticket06 policy resolves supported information/result semantics without changing the dataset.
+    # Other pending special/setup/transition mappings remain unsupported and reject to unknown.
+    $target = if ($null -ne $record.expected_classifier_output) { $record.expected_classifier_output }
+        elseif ($record.candidate_category -ceq 'special_in_game' -and
+            $record.category_detail -match '(information panel|battle-result overlay)$') { 'special_in_game' }
+        else { 'unknown' }
     $contractMatch = $analysis.category -ceq $target
     $outcome = if ($analysis.category -ceq 'unknown' -and $record.candidate_category -cne 'unknown') { 'rejected' }
         elseif ($analysis.category -ceq $record.candidate_category) { 'correct' } else { 'misclassified' }
@@ -103,7 +107,7 @@ $rows = foreach ($record in $selected.samples) {
     }
 }
 $eligible = @($rows | Where-Object { $_.independent_evaluation_candidate })
-$counts = foreach ($category in @('ordinary_in_game', 'out_of_game', 'loading', 'unknown')) {
+$counts = foreach ($category in @('ordinary_in_game', 'out_of_game', 'loading', 'unknown', 'special_in_game', 'special_setup')) {
     $group = @($eligible | Where-Object { $_.semantic_category -ceq $category })
     [ordered]@{
         category = $category; samples = $group.Count
@@ -113,10 +117,11 @@ $counts = foreach ($category in @('ordinary_in_game', 'out_of_game', 'loading', 
     }
 }
 $report = [ordered]@{
-    schema = 2; report_producer = 'evaluate-recognition-v2'; split = $Split; created_utc = [DateTime]::UtcNow.ToString('o')
+    schema = 3; report_producer = 'evaluate-recognition-v3'; split = $Split; created_utc = [DateTime]::UtcNow.ToString('o')
     executable_sha256 = (Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash
     manifest_sha256 = (Get-FileHash -LiteralPath (Join-Path $DatasetDirectory 'manifest.json') -Algorithm SHA256).Hash
-    scope = '1920x1200 offline archives; loading classification unsupported; pending special/transition mappings reject to unknown. Counts are frames, not independent scenes.'
+    mapping_policy = 'ticket06-information-result-v2'
+    scope = '1920x1200 offline archives; supported information/result views map to special_in_game; loading and other pending special/setup/transition mappings reject to unknown. Counts are frames, not independent scenes.'
     evaluated_archives = @($rows).Count; external_images_not_analyzed = @($selected.external_samples).Count
     independent_candidate_counts = @($counts)
     unsafe_ordinary_predictions = @($rows | Where-Object { $_.unsafe_ordinary_prediction }).Count
