@@ -1,6 +1,8 @@
 #include "stronghold/recognition.hpp"
+#include "stronghold/analysis.hpp"
 #include <fstream>
 #include <iostream>
+#include <Windows.h>
 
 namespace stronghold {
 int run_recognition_tests() {
@@ -21,6 +23,45 @@ int run_recognition_tests() {
             loaded.capture.frame.width != 2 || loaded.capture.frame.height != 1 || loaded.capture.frame.source_time_100ns != 1)
             throw Error("test_failed", "Archive did not preserve RGB pixels and source association");
         std::cout << "recognition: RGB archive and provenance passed\n";
+        auto observation = analyze_capture_archive(saved.directory, {});
+        if(observation.category != "unknown" || observation.source.id != saved.id ||
+           observation.source.capture.frame.rgb != c.frame.rgb || observation.reason != "unsupported_dimensions")
+            throw Error("test_failed", "Unsupported image analysis lost unknown or source association");
+        std::cout << "recognition: unsupported screen is unknown with provenance passed\n";
+        // Optional real-development fixture: paths supplied explicitly, never a heldout manifest.
+        wchar_t sample[32768]{}, maa[32768]{};
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_DIFFICULTY",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed", "Development fixture requires STRONGHOLD_MAA_ROOT");
+            auto classified = analyze_capture_archive(fs::path(sample), fs::path(maa));
+            if(classified.category != "out_of_game" || classified.model_sha256.empty() ||
+               classified.source.id.empty())
+                throw Error("test_failed", "Development difficulty screen was not locally recognized with source/model provenance");
+            std::cout << "recognition: development difficulty classification with neural provenance passed\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_REST",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            const auto classified=analyze_capture_archive(sample,maa);
+            if(classified.category!="ordinary_in_game") throw Error("test_failed","Stable development rest was not recognized");
+            std::cout << "recognition: stable development rest passed\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_COMBAT",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            const auto classified=analyze_capture_archive(sample,maa);
+            if(classified.category!="ordinary_in_game") throw Error("test_failed","Stable development combat was not recognized");
+            std::cout << "recognition: stable development combat passed\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_UNSUPPORTED",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            const auto classified=analyze_capture_archive(sample,maa);
+            if(classified.category!="unknown") throw Error("test_failed","Unsupported development overlay/transition was confirmed as ordinary");
+            std::cout << "recognition: development unsupported view rejected passed\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_MENU",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            const auto classified=analyze_capture_archive(sample,maa);
+            if(classified.category!="out_of_game") throw Error("test_failed","Development main menu was not recognized");
+            std::cout << "recognition: development main menu passed\n";
+        }
         auto expect_error = [&](const char* code, auto action) {
             try { action(); } catch(const Error& e) {
                 if(e.code == code) return;

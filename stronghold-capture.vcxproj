@@ -50,6 +50,8 @@
   <ItemGroup>
     <ClCompile Include="$(RepositoryRoot)\src\main.cpp" />
     <ClCompile Include="$(RepositoryRoot)\src\recognition.cpp" />
+    <ClCompile Include="$(RepositoryRoot)\src\analysis.cpp" />
+    <ClCompile Include="$(RepositoryRoot)\src\neural_text.cpp" />
     <ClCompile Include="$(RepositoryRoot)\src\recognition_tests.cpp" />
     <ClCompile Include="$(RepositoryRoot)\src\core.cpp" />
     <ClCompile Include="$(RepositoryRoot)\src\worker.cpp" />
