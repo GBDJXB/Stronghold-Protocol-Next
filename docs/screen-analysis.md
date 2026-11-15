@@ -13,7 +13,7 @@
 
 `analyze-archive --archive <兼容存档目录> --maa-root <可信本地 MAA 安装目录>`。
 
-C++ 入口 `analyze_capture_archive` 返回 Analysis，保留完整 LoadedCapture（frame_id、原目录、RGB、原始 metadata、请求 UTC 与来源 QPC）。输出一律 historical。分类不产生字段当前值，不发送游戏输入。
+C++ 入口 `analyze_capture_archive` 返回 Analysis，保留完整 LoadedCapture（frame_id、原目录、RGB、原始 metadata、请求 UTC 与来源 QPC）。输出一律 historical。分类和字段均为历史观察，不产生当前确认值，不发送游戏输入。
 
 本地神经文本识别读取输入 RGB 的指定文本行，使用外部 MAA 通用 PaddleOCR rec ONNX；模型不包含本项目样本 ID，也不读取标注清单。分类只使用网络输出和固定文本锚点。没有从 manifest 查询预测结果的路径。样本清单仅供独立 runner 对照。
 
@@ -61,3 +61,19 @@ CTC confidence 是网络字符概率的均值，不是校准后的画面分类�
 完整来源与逐图证据报告保存在 `captures/state-recognition-20261115-050329/classifier-02-development.json`（不纳入代码提交）。正式评估候选尚未执行。S019 明确列为当前拒识边界，不为提高开发分数放宽普通战斗规则。
 
 评估报告 schema 2 将真实语义分类结果与首版安全契约分开：已知画面输出 unknown 一律记为 rejected，即便该画面的冻结目标就是 unknown；`frozen_contract_match` 单独记录是否符合保守目标。开发组按真实语义统计为 ordinary_in_game 正确 16、拒识 3（含两张过渡），out_of_game 正确 13，special_in_game 拒识 3。既有开发 JSON 已仅据保存的原始分析重新解释上述两项，未重读图像或重跑模型；报告保留原始 executable/model/source 指纹及解释更新说明。
+
+## Ticket03：单个资金字段
+
+Analysis.funds 为 NumericObservation：status（recognized / unknown）、optional<int> value、confidence、reason、raw_text、model_sha256 与 dictionary_sha256。字段来源直接使用同一 Analysis.source，包含 frame_id、存档路径、原始 metadata、请求 UTC 与来源 QPC；CLI funds JSON 与分类、metadata 一起输出。未知 value 必须为 null；零是有效数值。无跨帧缓存，不能复用上一次资金。
+
+本版只在 stable_rest_text_anchors 的 1920×1200 普通休整布局尝试资金。战斗白色 C 是部署费用，不做资金；分类局外、未知、加载未支持及特殊页／过渡时资金保持 unknown。S036 人工资金标签5不改变，但因过渡分类 unknown 不输出已确认资金。
+
+数字识别使用外部 MAA resource/PaddleCharOCR/rec/inference.onnx 和 keys.txt，经同一个原生 ONNX Runtime API24 后端完整 CTC 解码。未限制 logits 到数字子集、未把字母 O 转换为零。通用中文模型实际将 S017 读为0但字符置信度约0.706，低于0.95，故不能用降低阈值通过该例；CharOCR 原生实际为0、0.976443。分类保留通用模型哈希；资金单独保存字符模型和字典哈希，runtime_version 相同。模型仍由用户可信 MAA 安装提供，不复制模型／DLL；第三方许可与复用边界沿用 docs/third-party.md，不能由代码许可推断模型可再分发。
+
+有限布局契约：只支持单个数字，读图 ROI x1776,y890,width44,height46，完整解码必须匹配 [0-9] 且平均字符概率≥0.95。黄色资金图标区域 x1730..1775,y890..935 至少200个候选黄色像素作为语义布局守卫；此外检查 x1772..1899,y890..935 中数字安全框 x1778..1815,y896..930 外是否存在亮金色像素，有则拒识 unsupported_funds_extent，避免窄 ROI 接受明显超出边界的金额片段。该守卫是显式颜色／布局假设，不替代神经识别，不证明任意字体、颜色或多位数截断都能拒识。多位余额尚不支持；当前样本仅验证0和4，不宣称0–9全部数字准确率或任意余额识别。
+
+TDD 公开入口：S015资金4先在默认 unknown 时 red，再由原生识别 green；去掉黄色图标的独立临时存档先 red（仍接受4），加入布局守卫后 green；S017零因通用模型置信度不足 red，接入字符模型后 green；在窄 ROI 外添加亮金色笔画先 red（仍接受4），加入范围守卫后 green。黑掉数字区域但保留图标的临时存档仍 ordinary_in_game，字段 unknown/unreadable_funds，不变为零；输出关联该临时存档自身的 frame_id。全部修改通过 public save_capture 生成测试临时存档，不修改原始素材。
+
+开发组合检查：S015=4、S017=0、S020战斗资金unknown、S036过渡分类和资金unknown、S001局外资金unknown，以及上述三个派生软件 fixture 和原有存档异常测试全部通过。真实开发 fixture 由 STRONGHOLD_DEVELOPMENT_FUNDS_FOUR / STRONGHOLD_DEVELOPMENT_FUNDS_ZERO 显式指定目录；默认 suite 不读游戏图片。不读取预留图片／结果调参，S055待父集成对话冻结后独立评估。自然不可读资金、其他数值／地图／布局／分辨率、独立场景统计准确率、真实游戏采集测试均未验收；ticket02加载分类仍未完整支持，不据本票宣称整体规格完成。
+
+增加的固定区域扫描 O(crop pixels)，CTC 完整解码 O(T×C)，另含单次字符模型加载／推理；T 为输出步数、C 为字典类别数。内存含额外字符模型 session、输入／logits；NumericObservation 本身 O(text bytes)，不缓存额外帧。不为当前单次离线分析引入长生命周期模型缓存。

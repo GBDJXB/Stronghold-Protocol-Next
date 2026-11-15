@@ -47,20 +47,66 @@ int run_recognition_tests() {
         if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_COMBAT",sample,32768)) {
             if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
             const auto classified=analyze_capture_archive(sample,maa);
-            if(classified.category!="ordinary_in_game") throw Error("test_failed","Stable development combat was not recognized");
+            if(classified.category!="ordinary_in_game" || classified.funds.status!="unknown" || classified.funds.value) throw Error("test_failed","Combat cost was confused with funds or combat not recognized");
             std::cout << "recognition: stable development combat passed\n";
         }
         if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_UNSUPPORTED",sample,32768)) {
             if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
             const auto classified=analyze_capture_archive(sample,maa);
-            if(classified.category!="unknown") throw Error("test_failed","Unsupported development overlay/transition was confirmed as ordinary");
+            if(classified.category!="unknown" || classified.funds.status!="unknown" || classified.funds.value) throw Error("test_failed","Unsupported development overlay/transition confirmed a screen or funds value");
             std::cout << "recognition: development unsupported view rejected passed\n";
         }
         if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_MENU",sample,32768)) {
             if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
             const auto classified=analyze_capture_archive(sample,maa);
-            if(classified.category!="out_of_game") throw Error("test_failed","Development main menu was not recognized");
+            if(classified.category!="out_of_game" || classified.funds.status!="unknown" || classified.funds.value) throw Error("test_failed","Main menu recognized funds or was not recognized");
             std::cout << "recognition: development main menu passed\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_FUNDS_FOUR",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            const auto observed=analyze_capture_archive(sample,maa);
+            if(observed.category!="ordinary_in_game" || observed.funds.status!="recognized" ||
+               observed.funds.value!=4 || observed.funds.confidence<.95 || observed.source.id.empty() ||
+               observed.funds.model_sha256.empty() || observed.funds.dictionary_sha256.empty())
+                throw Error("test_failed","Development funds4 was not recognized with source and confidence");
+            std::cout << "recognition: development funds4 passed\n";
+            auto without_icon=observed.source.capture;
+            for(int y=890;y<936;++y) for(int x=1730;x<1776;++x)
+                for(int channel=0;channel<3;++channel) without_icon.frame.rgb[(y*1920+x)*3+channel]=0;
+            const auto iconless=save_capture(without_icon,root);
+            const auto rejected=analyze_capture_archive(iconless.directory,maa);
+            if(rejected.category!="ordinary_in_game" || rejected.funds.status!="unknown" || rejected.funds.value)
+                throw Error("test_failed","Funds numeral without yellow icon was accepted");
+            std::cout << "recognition: synthetic missing funds icon rejected passed\n";
+            auto unreadable=observed.source.capture;
+            for(int y=890;y<936;++y) for(int x=1776;x<1836;++x)
+                for(int channel=0;channel<3;++channel) unreadable.frame.rgb[(y*1920+x)*3+channel]=0;
+            const auto blacked=save_capture(unreadable,root);
+            const auto unknown=analyze_capture_archive(blacked.directory,maa);
+            if(unknown.category!="ordinary_in_game" || unknown.funds.status!="unknown" || unknown.funds.value ||
+               unknown.funds.reason!="unreadable_funds" || unknown.source.id!=blacked.id)
+                throw Error("test_failed","Unreadable funds did not remain unknown with its own source");
+            std::cout << "recognition: synthetic unreadable funds remains ordinary with unknown field passed\n";
+            auto extended=observed.source.capture;
+            for(int y=900;y<920;++y) for(int x=1825;x<1830;++x) {
+                const auto offset=(y*1920+x)*3;
+                extended.frame.rgb[offset]=255;extended.frame.rgb[offset+1]=220;extended.frame.rgb[offset+2]=0;
+            }
+            const auto larger=save_capture(extended,root);
+            const auto bounded=analyze_capture_archive(larger.directory,maa);
+            if(bounded.category!="ordinary_in_game" || bounded.funds.value || bounded.funds.status!="unknown")
+                throw Error("test_failed","Extended funds glyph outside supported crop was accepted");
+            std::cout << "recognition: synthetic extended funds layout rejected passed\n";
+
+
+
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_FUNDS_ZERO",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            const auto observed=analyze_capture_archive(sample,maa);
+            if(observed.category!="ordinary_in_game" || observed.funds.status!="recognized" || observed.funds.value!=0)
+                throw Error("test_failed","Valid zero funds confused with unknown");
+            std::cout << "recognition: development zero funds passed\n";
         }
         auto expect_error = [&](const char* code, auto action) {
             try { action(); } catch(const Error& e) {

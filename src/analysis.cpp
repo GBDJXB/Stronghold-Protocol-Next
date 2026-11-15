@@ -44,6 +44,39 @@ Analysis analyze_capture_archive(const fs::path& directory, const fs::path& maa_
            ready.text=="准备就绪" && ready.confidence>=.95 && refresh.text=="刷新" && refresh.confidence>=.95 &&
            close.text=="收起" && close.confidence>=.95) {
             result.category="ordinary_in_game"; result.reason="stable_rest_text_anchors";
+            NeuralTextRecognizer numeric_recognizer(maa_root,TextModel::Characters);
+            result.funds.model_sha256=numeric_recognizer.model_sha256;
+            result.funds.dictionary_sha256=numeric_recognizer.dictionary_sha256;
+            const auto funds=numeric_recognizer.read(frame,1776,890,44,46);
+            result.evidence.push_back("funds="+funds.text+";confidence="+std::to_string(funds.confidence));
+            result.funds.raw_text=funds.text;
+            result.funds.confidence=funds.confidence;
+            result.funds.reason="unreadable_funds";
+            // Layout guard for the yellow funds icon; never identify the white C counter as funds.
+            int yellow_pixels=0;
+            for(int y=890;y<936;++y) for(int x=1730;x<1776;++x) {
+                const auto offset=(static_cast<size_t>(y)*frame.width+x)*3;
+                const int r=frame.rgb[offset],g=frame.rgb[offset+1],b=frame.rgb[offset+2];
+                if(r>=120 && g>=100 && b<=110 && r*2>=b*3 && g*10>=b*13) ++yellow_pixels;
+            }
+            result.evidence.push_back("funds_yellow_icon_pixels="+std::to_string(yellow_pixels));
+            // Only a single gold numeral in this layout is currently supported.
+            // Inspect the full right-hand amount space and crop border to reject clipped/extra glyphs.
+            bool outside_glyph=false;
+            for(int y=890;y<936;++y) for(int x=1772;x<1900;++x) {
+                if(x>=1778 && x<1816 && y>=896 && y<931) continue;
+                const auto offset=(static_cast<size_t>(y)*frame.width+x)*3;
+                const int r=frame.rgb[offset],g=frame.rgb[offset+1],b=frame.rgb[offset+2];
+                if(r>=180 && g>=160 && b<=140 && r-b>=70) outside_glyph=true;
+            }
+            if(yellow_pixels<200) result.funds.reason="funds_icon_not_supported";
+            else if(outside_glyph) result.funds.reason="unsupported_funds_extent";
+            else if(std::regex_match(funds.text,std::regex("[0-9]")) && funds.confidence>=.95) {
+                result.funds.status="recognized";
+                result.funds.value=std::stoi(funds.text);
+                result.funds.reason="stable_rest_funds_text";
+            }
+
         } else {
             const auto progress=read("enemy_progress",970,27,71,40);
             const auto covenant=read("covenant_label",811,173,55,28);
