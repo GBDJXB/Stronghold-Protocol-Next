@@ -80,12 +80,12 @@ void validate(const StateRecord& r) {
     if(created.ValueType()!=JsonValueType::Null) decimal(text(window,"process_created"));
 }
 std::string serialize(const StateRecord& r) {
-    const auto& f=r.funds;
-    std::string s="{\"schema_version\":2,\"id\":"+quote_json(r.id)+",\"saved_at\":"+quote_json(r.saved_at)+",\"observation_status\":\"historical\",\"source\":{\"frame_id\":"+quote_json(r.frame_id)+",\"directory\":"+quote_json(utf8(r.source_directory.wstring()))+",\"request_start\":"+quote_json(r.request_start)+",\"request_end\":"+quote_json(r.request_end)+",\"metadata_json\":"+quote_json(r.source_metadata_json)+"},\"category\":"+quote_json(r.category)+",\"special_view\":"+quote_json(r.special_view)+",\"reason\":"+quote_json(r.reason)+",\"recognizer_version\":"+quote_json(r.recognizer_version)+",\"runtime_version\":"+quote_json(r.runtime_version)+",\"model_sha256\":"+quote_json(r.model_sha256)+",\"dictionary_sha256\":"+quote_json(r.dictionary_sha256)+",\"funds\":{\"status\":"+quote_json(f.status)+",\"value\":"+(f.value?std::to_string(*f.value):"null")+",\"confidence\":"+std::to_string(f.confidence)+",\"reason\":"+quote_json(f.reason)+",\"raw_text\":"+quote_json(f.raw_text)+",\"model_sha256\":"+quote_json(f.model_sha256)+",\"dictionary_sha256\":"+quote_json(f.dictionary_sha256)+"}";
     // All observations share this snapshot's immutable frame/source linkage.
     auto extra=[&](const auto& observation,const std::string& value) {
         return "{\"status\":"+quote_json(observation.status)+",\"value\":"+value+",\"confidence\":"+std::to_string(observation.confidence)+",\"reason\":"+quote_json(observation.reason)+",\"raw_text\":"+quote_json(observation.raw_text)+",\"model_sha256\":"+quote_json(observation.model_sha256)+",\"dictionary_sha256\":"+quote_json(observation.dictionary_sha256)+"}";
     };
+    std::string s="{\"schema_version\":2,\"id\":"+quote_json(r.id)+",\"saved_at\":"+quote_json(r.saved_at)+",\"observation_status\":\"historical\",\"source\":{\"frame_id\":"+quote_json(r.frame_id)+",\"directory\":"+quote_json(utf8(r.source_directory.wstring()))+",\"request_start\":"+quote_json(r.request_start)+",\"request_end\":"+quote_json(r.request_end)+",\"metadata_json\":"+quote_json(r.source_metadata_json)+"},\"category\":"+quote_json(r.category)+",\"special_view\":"+quote_json(r.special_view)+",\"reason\":"+quote_json(r.reason)+",\"recognizer_version\":"+quote_json(r.recognizer_version)+",\"runtime_version\":"+quote_json(r.runtime_version)+",\"model_sha256\":"+quote_json(r.model_sha256)+",\"dictionary_sha256\":"+quote_json(r.dictionary_sha256);
+    s+=",\"funds\":"+extra(r.funds,r.funds.value?std::to_string(*r.funds.value):"null");
     s+=",\"stage\":"+extra(r.stage,r.stage.value?quote_json(*r.stage.value):"null")+",\"remaining_time_unit\":\"seconds\",\"remaining_time\":"+extra(r.remaining_time,r.remaining_time.value?std::to_string(*r.remaining_time.value):"null")+",\"evidence\":[";
     for(size_t i=0;i<r.evidence.size();++i) {if(i)s+=',';s+=quote_json(r.evidence[i]);} return s+"]}";
 }
@@ -97,18 +97,17 @@ StateRecord parse(const std::string& content) {
         r.id=text(o,"id");r.saved_at=text(o,"saved_at");r.observation_status=text(o,"observation_status");
         auto source=object(o,"source");r.frame_id=text(source,"frame_id");r.source_directory=wide(text(source,"directory"));r.source_metadata_json=text(source,"metadata_json");r.request_start=text(source,"request_start");r.request_end=text(source,"request_end");
         r.category=text(o,"category");r.special_view=text(o,"special_view");r.reason=text(o,"reason");r.recognizer_version=text(o,"recognizer_version");r.runtime_version=text(o,"runtime_version");r.model_sha256=text(o,"model_sha256");r.dictionary_sha256=text(o,"dictionary_sha256");
-        auto f=object(o,"funds");r.funds.status=text(f,"status");r.funds.confidence=number(f,"confidence");r.funds.reason=text(f,"reason");r.funds.raw_text=text(f,"raw_text");r.funds.model_sha256=text(f,"model_sha256");r.funds.dictionary_sha256=text(f,"dictionary_sha256");
-        if(!f.HasKey(L"value")) invalid("funds.value");
-        auto v=f.GetNamedValue(L"value");
-        if(v.ValueType()!=JsonValueType::Null) {
-            double n=number(f,"value");if(std::trunc(n)!=n||n<0||n>INT_MAX) invalid("funds.value");r.funds.value=static_cast<int>(n);
-        }
         if(text(o,"remaining_time_unit")!="seconds") invalid("remaining_time_unit");
         auto read_observation=[&](const char* key,auto& target) {
             auto field=object(o,key);target.status=text(field,"status");target.confidence=number(field,"confidence");target.reason=text(field,"reason");target.raw_text=text(field,"raw_text");target.model_sha256=text(field,"model_sha256");target.dictionary_sha256=text(field,"dictionary_sha256");
             if(!field.HasKey(L"value")) invalid(key);
             return field;
         };
+        auto f=read_observation("funds",r.funds);
+        auto v=f.GetNamedValue(L"value");
+        if(v.ValueType()!=JsonValueType::Null) {
+            double n=number(f,"value");if(std::trunc(n)!=n||n<0||n>INT_MAX) invalid("funds.value");r.funds.value=static_cast<int>(n);
+        }
         auto stage=read_observation("stage",r.stage);
         if(stage.GetNamedValue(L"value").ValueType()!=JsonValueType::Null) r.stage.value=text(stage,"value");
         auto timer=read_observation("remaining_time",r.remaining_time);
