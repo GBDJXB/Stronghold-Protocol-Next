@@ -55,7 +55,7 @@ C++ 调用入口为 `stronghold::load_capture_archive`，见 `include/stronghold
 
 运行时和模型来自显式指定的可信本地安装，项目不重新分发这些文件。局部检查仍为 `pwsh -File scripts/build.ps1 -TestRecognition`；真实开发正例通过文档列出的环境变量显式选入，默认不读取真实 captures。独立样本评估使用 `scripts/evaluate-recognition.ps1`，开发与验证的用途分离，未知拒识不充当 loading 分类成功。
 
-当前未通过完整识别验收：预留组两张加载被误报为局外，第二局资金 4 被守卫拒识。阶段／时间／资金不会以旧值补齐。逐图结果、已完成检查和补样要求见 [本轮验证结果](docs/state-recognition-validation.md)。
+当前未通过完整识别验收：新增预留组入口／休整正确，加载按约定拒识，三张战斗均被拒识，ticket02仍未完成，见 [最新分类验证](docs/ticket02-validation-20261115.md)。此前加载误报及资金拒识的 [历史报告](docs/state-recognition-validation.md) 保留。阶段／时间／资金不会以旧值补齐。
 
 历史状态持久化与重新读取见 [docs/state-records.md](docs/state-records.md)。
 
