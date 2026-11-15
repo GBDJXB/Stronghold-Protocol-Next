@@ -51,7 +51,7 @@ C++ 调用入口为 `stronghold::load_capture_archive`，见 `include/stronghold
 
 ## 离线画面分析（有限支持）
 
-`build\x64\Release\stronghold-capture.exe analyze-archive --archive <存档目录> --maa-root <可信 MAA 安装绝对路径>` 使用本地 MAA PaddleOCR 神经模型与 ONNX Runtime，读取兼容原图并输出画面类别、文字证据、原始来源及模型/字典指纹。首版支持当前 1920×1200 的主菜单、难度页及严格文本条件支持的普通休整/战斗。加载分类尚不支持；特殊结果覆盖层及证据不足画面返回 unknown。所有离线结果保持 historical。具体范围、保守映射、错误边界和开发 TDD 记录见 [画面分析](docs/screen-analysis.md)。
+`build\x64\Release\stronghold-capture.exe analyze-archive --archive <存档目录> --maa-root <可信 MAA 安装绝对路径>` 使用本地 MAA PaddleOCR 神经模型与 ONNX Runtime，读取兼容原图并输出画面类别、文字证据、原始来源及模型/字典指纹。当前支持 1920×1200 的主菜单、难度页、普通休整/战斗/战后等待，以及特殊信息页/结果覆盖层（special_in_game，special_view 为 information/result）。加载分类尚不支持；证据不足画面返回 unknown。所有离线结果保持 historical。具体范围、保守映射、错误边界和开发 TDD 记录见 [画面分析](docs/screen-analysis.md)。
 
 运行时和模型来自显式指定的可信本地安装，项目不重新分发这些文件。局部检查仍为 `pwsh -File scripts/build.ps1 -TestRecognition`；真实开发正例通过文档列出的环境变量显式选入，默认不读取真实 captures。独立样本评估使用 `scripts/evaluate-recognition.ps1`，开发与验证的用途分离，未知拒识不充当 loading 分类成功。
 
