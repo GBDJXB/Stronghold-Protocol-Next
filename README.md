@@ -42,3 +42,9 @@ WGC 支持性探测：
 metadata 使用 schema 2。`source_frame.time` 是 WGC `SystemRelativeTime` 的 QPC 100 ns 计数，以十进制字符串保存，避免 JSON 浮点数精度损失。窗口身份不可完整验证时，路径/创建时间留为 `null` 并记录警告；若复核中身份从 verified 降为 limited，则拒绝继续。程序不会自动提权。性能字段包括 PNG 编码时间、归档检查耗时、PNG 字节数，以及父/工作进程各自记录的 working-set 峰值；它们不是 GPU 内存，也不能相加后代表截图相关进程总峰值。
 
 详细行为、限制、metadata 字段及尚待实机验证项目见 [截图设计](docs/capture.md)；第三方来源与许可证说明见 [第三方说明](docs/third-party.md)。
+
+## 离线存档检查
+
+`build\x64\Release\stronghold-capture.exe inspect-archive --archive <存档目录>` 只读检查 schema 2 的 `metadata.json` 与 RGB8 `raw.png`，输出记录标识、尺寸和原始来源元数据。此功能尚不包含画面分类或字段识别。离线记录一律为 `historical`；元数据中的 `fresh` 仅代表原存档写入时的检查，不表示当前画面。
+
+C++ 调用入口为 `stronghold::load_capture_archive`，见 `include/stronghold/recognition.hpp`。局部编译与合成存档检查：`pwsh -File scripts/build.ps1 -TestRecognition`（不会运行 capture worker suite）。格式限制、错误码与验证范围见 [离线存档读取](docs/archive-reader.md)。

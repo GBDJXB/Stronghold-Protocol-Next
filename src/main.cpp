@@ -1,4 +1,6 @@
 #include "internal.hpp"
+#include "stronghold/recognition.hpp"
+namespace stronghold { int run_recognition_tests(); }
 
 #include <Windows.h>
 #include <iostream>
@@ -41,6 +43,8 @@ void help() {
         "    [--method auto|wgc]\n"
         "stronghold-capture --check-backend\n"
         "stronghold-capture --self-test\n"
+        "stronghold-capture inspect-archive --archive <directory>\n"
+        "stronghold-capture --self-test-recognition\n"
         "Captures an opaque, unobscured Arknights client area; focus is not required. No game inputs.\n";
 }
 }
@@ -59,6 +63,7 @@ int wmain(int argc, wchar_t** argv) {
             if (argc != 4) return 3;
             return worker_main(fs::absolute(argv[2]), fs::absolute(argv[3]));
         }
+        if (argc == 2 && std::wstring(argv[1]) == L"--self-test-recognition") return run_recognition_tests();
         if (argc == 2 && std::wstring(argv[1]) == L"--self-test") return run_tests(executable);
         if (argc == 1 || (argc == 2 && (std::wstring(argv[1]) == L"--help" || std::wstring(argv[1]) == L"-h"))) {
             help(); return 0;
@@ -66,6 +71,17 @@ int wmain(int argc, wchar_t** argv) {
         if (argc == 2 && std::wstring(argv[1]) == L"--check-backend") {
             check_wgc_support();
             std::cout << "{\"ok\":true,\"backend\":\"wgc\",\"implementation\":\"stronghold-wgc-v1\"}\n";
+            return 0;
+        }
+        if (std::wstring(argv[1]) == L"inspect-archive") {
+            if(argc != 4 || std::wstring(argv[2]) != L"--archive" || std::wstring(argv[3]).empty())
+                throw Error("invalid_argument", "inspect-archive requires --archive <directory>.");
+            const auto loaded = load_capture_archive(argv[3]);
+            const auto& c = loaded.capture;
+            std::cout << "{\"ok\":true,\"frame_id\":" << quote_json(loaded.id)
+                << ",\"directory\":" << quote_json(utf8(loaded.directory.wstring()))
+                << ",\"observation_status\":\"historical\",\"width\":" << c.frame.width << ",\"height\":" << c.frame.height
+                << ",\"rgb_bytes\":" << c.frame.rgb.size() << ",\"metadata\":" << loaded.metadata_json << "}\n";
             return 0;
         }
         if (std::wstring(argv[1]) != L"capture") throw Error("invalid_argument", "Unknown command; see --help.");
