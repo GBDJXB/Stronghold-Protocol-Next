@@ -1,5 +1,6 @@
 #include "stronghold/recognition.hpp"
 #include "stronghold/analysis.hpp"
+#include "stronghold/state.hpp"
 #include <fstream>
 #include <iostream>
 #include <Windows.h>
@@ -28,6 +29,59 @@ int run_recognition_tests() {
            observation.source.capture.frame.rgb != c.frame.rgb || observation.reason != "unsupported_dimensions")
             throw Error("test_failed", "Unsupported image analysis lost unknown or source association");
         std::cout << "recognition: unsupported screen is unknown with provenance passed\n";
+        auto synthetic = observation;
+        synthetic.category="ordinary_in_game"; synthetic.reason="synthetic_fixture";
+        synthetic.runtime_version="synthetic-runtime";
+        synthetic.funds.status="recognized"; synthetic.funds.value=4;
+        synthetic.funds.confidence=.99; synthetic.funds.reason="synthetic_fixture"; synthetic.funds.raw_text="4";
+        synthetic.funds.model_sha256=std::string(64,'a'); synthetic.funds.dictionary_sha256=std::string(64,'b');
+        const auto record_file=save_state_record(synthetic,root / L"states");
+        const auto state=load_state_record(record_file);
+        if(state.observation_status!="historical" || state.funds.value!=4 || state.funds.status!="recognized" ||
+           state.frame_id!=saved.id || state.source_metadata_json!=loaded.metadata_json ||
+           state.request_start!=c.requested_at || state.funds.model_sha256!=std::string(64,'a'))
+            throw Error("test_failed","Saved state lost historical value/source/provenance");
+        std::cout << "state: recognized value reloads as historical with source passed\n";
+        const auto unknown_file=save_state_record(observation,root / L"states");
+        if(unknown_file==record_file || load_state_record(unknown_file).funds.value ||
+           load_state_record(unknown_file).funds.status!="unknown" || load_state_record(record_file).funds.value!=4)
+            throw Error("test_failed","Unknown snapshot overwrote history or became zero/known");
+        fs::rename(saved.directory,saved.directory.wstring()+L"-moved");
+        if(load_state_record(record_file).source_metadata_json!=loaded.metadata_json)
+            throw Error("test_failed","Reload incorrectly depends on original archive presence");
+        fs::rename(saved.directory.wstring()+L"-moved",saved.directory);
+        auto state_error=[&](const char* code,auto action) {
+            try {action();} catch(const Error& e) {if(e.code==code)return;throw Error("test_failed",std::string("Expected ")+code+", got "+e.code);}
+            throw Error("test_failed",std::string("Expected ")+code);
+        };
+        std::ifstream state_input(record_file,std::ios::binary);
+        const std::string original_state((std::istreambuf_iterator<char>(state_input)),{});state_input.close();
+        auto corrupt=root/L"corrupt-state.json";
+        auto bad_state=[&](const std::string& from,const std::string& to,const char* code) {
+            auto content=original_state;auto pos=content.find(from);if(pos==std::string::npos)throw Error("test_failed","State corruption fixture missing");
+            content.replace(pos,from.size(),to);std::ofstream out(corrupt,std::ios::binary|std::ios::trunc);out<<content;out.close();
+            state_error(code,[&]{load_state_record(corrupt);});
+        };
+        bad_state("\"schema_version\":1","\"schema_version\":99","state_version");
+        bad_state("\"value\":4","\"value\":null","state_invalid");
+        bad_state("source_frame","missing_source_frame","state_invalid");
+        bad_state("process_created","missing_process_created","state_invalid");
+        bad_state("\"status\":\"recognized\"","\"status\":\"unknown\"","state_invalid");
+        bad_state("\"observation_status\":\"historical\"","\"observation_status\":\"current\"","state_invalid");
+        bad_state("\"confidence\":0.990000","\"confidence\":1.1","state_invalid");
+        bad_state("\"frame_id\":","\"missing_frame_id\":","state_invalid");
+        bad_state("2026-11-15T00:00:00.000Z","2026-02-30T00:00:00.000Z","state_invalid");
+        {std::ofstream out(corrupt,std::ios::binary|std::ios::trunc);out<<"{";}
+        state_error("state_invalid",[&]{load_state_record(corrupt);});
+        {std::ofstream out(corrupt,std::ios::binary|std::ios::trunc);out<<std::string(2*1024*1024+1,' ');}
+        state_error("state_resource_limit",[&]{load_state_record(corrupt);});
+        state_error("state_missing",[&]{load_state_record(root/L"absent-state.json");});
+        auto inconsistent=synthetic;inconsistent.funds.status="unknown";
+        state_error("state_invalid",[&]{save_state_record(inconsistent,root/L"invalid-state-output");});
+        if(fs::exists(root/L"invalid-state-output"))throw Error("test_failed","Invalid state was published");
+        if(load_state_record(record_file).funds.value!=4 || load_capture_archive(saved.directory).capture.frame.rgb!=c.frame.rgb)
+            throw Error("test_failed","Snapshots changed previous state or raw archive");
+        std::cout << "state: unknown/null immutable history, moved archive and corrupt/missing/version/resource rejection passed\n";
         // Optional real-development fixture: paths supplied explicitly, never a heldout manifest.
         wchar_t sample[32768]{}, maa[32768]{};
         if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_DIFFICULTY",sample,32768)) {
@@ -69,6 +123,8 @@ int run_recognition_tests() {
                observed.funds.value!=4 || observed.funds.confidence<.95 || observed.source.id.empty() ||
                observed.funds.model_sha256.empty() || observed.funds.dictionary_sha256.empty())
                 throw Error("test_failed","Development funds4 was not recognized with source and confidence");
+            const auto funds_snapshot=load_state_record(save_state_record(observed,root/L"real-funds-states"));
+            if(funds_snapshot.funds.value!=4 || funds_snapshot.funds.model_sha256!=observed.funds.model_sha256 || funds_snapshot.observation_status!="historical") throw Error("test_failed","Real funds snapshot lost value/provenance");
             std::cout << "recognition: development funds4 passed\n";
             auto without_icon=observed.source.capture;
             for(int y=890;y<936;++y) for(int x=1730;x<1776;++x)
