@@ -48,3 +48,9 @@ metadata 使用 schema 2。`source_frame.time` 是 WGC `SystemRelativeTime` 的 
 `build\x64\Release\stronghold-capture.exe inspect-archive --archive <存档目录>` 只读检查 schema 2 的 `metadata.json` 与 RGB8 `raw.png`，输出记录标识、尺寸和原始来源元数据。此功能尚不包含画面分类或字段识别。离线记录一律为 `historical`；元数据中的 `fresh` 仅代表原存档写入时的检查，不表示当前画面。
 
 C++ 调用入口为 `stronghold::load_capture_archive`，见 `include/stronghold/recognition.hpp`。局部编译与合成存档检查：`pwsh -File scripts/build.ps1 -TestRecognition`（不会运行 capture worker suite）。格式限制、错误码与验证范围见 [离线存档读取](docs/archive-reader.md)。
+
+## 离线画面分析（有限支持）
+
+`build\x64\Release\stronghold-capture.exe analyze-archive --archive <存档目录> --maa-root <可信 MAA 安装绝对路径>` 使用本地 MAA PaddleOCR 神经模型与 ONNX Runtime，读取兼容原图并输出画面类别、文字证据、原始来源及模型/字典指纹。首版支持当前 1920×1200 的主菜单、难度页及严格文本条件支持的普通休整/战斗。加载分类尚不支持；特殊结果覆盖层及证据不足画面返回 unknown。所有离线结果保持 historical。具体范围、保守映射、错误边界和开发 TDD 记录见 [画面分析](docs/screen-analysis.md)。
+
+运行时和模型来自显式指定的可信本地安装，项目不重新分发这些文件。局部检查仍为 `pwsh -File scripts/build.ps1 -TestRecognition`；真实开发正例通过文档列出的环境变量显式选入，默认不读取真实 captures。独立样本评估使用 `scripts/evaluate-recognition.ps1`，开发与验证的用途分离，未知拒识不充当 loading 分类成功。

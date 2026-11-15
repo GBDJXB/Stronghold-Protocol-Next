@@ -1,5 +1,6 @@
 #include "internal.hpp"
 #include "stronghold/recognition.hpp"
+#include "stronghold/analysis.hpp"
 namespace stronghold { int run_recognition_tests(); }
 
 #include <Windows.h>
@@ -43,6 +44,7 @@ void help() {
         "    [--method auto|wgc]\n"
         "stronghold-capture --check-backend\n"
         "stronghold-capture --self-test\n"
+        "stronghold-capture analyze-archive --archive <directory> --maa-root <MAA installation>\n"
         "stronghold-capture inspect-archive --archive <directory>\n"
         "stronghold-capture --self-test-recognition\n"
         "Captures an opaque, unobscured Arknights client area; focus is not required. No game inputs.\n";
@@ -71,6 +73,24 @@ int wmain(int argc, wchar_t** argv) {
         if (argc == 2 && std::wstring(argv[1]) == L"--check-backend") {
             check_wgc_support();
             std::cout << "{\"ok\":true,\"backend\":\"wgc\",\"implementation\":\"stronghold-wgc-v1\"}\n";
+            return 0;
+        }
+        if (std::wstring(argv[1]) == L"analyze-archive") {
+            if(argc != 6 || std::wstring(argv[2]) != L"--archive" || std::wstring(argv[4]) != L"--maa-root")
+                throw Error("invalid_argument", "analyze-archive requires --archive <directory> --maa-root <installation>.");
+            const auto result = analyze_capture_archive(argv[3],argv[5]);
+            std::cout << "{\"ok\":true,\"frame_id\":" << quote_json(result.source.id)
+                << ",\"directory\":" << quote_json(utf8(result.source.directory.wstring()))
+                << ",\"observation_status\":\"historical\",\"category\":" << quote_json(result.category)
+                << ",\"reason\":" << quote_json(result.reason)
+                << ",\"recognizer_version\":" << quote_json(result.recognizer_version)
+                << ",\"runtime_version\":" << quote_json(result.runtime_version)
+                << ",\"model_sha256\":" << quote_json(result.model_sha256)
+                << ",\"dictionary_sha256\":" << quote_json(result.dictionary_sha256) << ",\"evidence\":[";
+            for(size_t i=0;i<result.evidence.size();++i) {
+                if(i) std::cout << ','; std::cout << quote_json(result.evidence[i]);
+            }
+            std::cout << "],\"metadata\":" << result.source.metadata_json << "}\n";
             return 0;
         }
         if (std::wstring(argv[1]) == L"inspect-archive") {
