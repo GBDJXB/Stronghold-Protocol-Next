@@ -35,12 +35,16 @@ int run_recognition_tests() {
         synthetic.funds.status="recognized"; synthetic.funds.value=4;
         synthetic.funds.confidence=.99; synthetic.funds.reason="synthetic_fixture"; synthetic.funds.raw_text="4";
         synthetic.funds.model_sha256=std::string(64,'a'); synthetic.funds.dictionary_sha256=std::string(64,'b');
+        synthetic.stage={"recognized","combat",.99,"synthetic_fixture","0/3",std::string(64,'a'),std::string(64,'b')};
+        synthetic.remaining_time={"recognized",47,.99,"synthetic_fixture","47",std::string(64,'c'),std::string(64,'d')};
         const auto record_file=save_state_record(synthetic,root / L"states");
         const auto state=load_state_record(record_file);
         if(state.observation_status!="historical" || state.funds.value!=4 || state.funds.status!="recognized" ||
            state.frame_id!=saved.id || state.source_metadata_json!=loaded.metadata_json ||
            state.request_start!=c.requested_at || state.funds.model_sha256!=std::string(64,'a'))
             throw Error("test_failed","Saved state lost historical value/source/provenance");
+        if(state.stage.value!="combat" || state.remaining_time.value!=47 || state.remaining_time.model_sha256!=std::string(64,'c'))
+            throw Error("test_failed","State lost independent stage/time provenance");
         std::cout << "state: recognized value reloads as historical with source passed\n";
         const auto unknown_file=save_state_record(observation,root / L"states");
         if(unknown_file==record_file || load_state_record(unknown_file).funds.value ||
@@ -63,6 +67,11 @@ int run_recognition_tests() {
             state_error(code,[&]{load_state_record(corrupt);});
         };
         bad_state("\"schema_version\":2","\"schema_version\":99","state_version");
+        bad_state("\"stage\":","\"missing_stage\":","state_invalid");
+        bad_state("\"remaining_time\":","\"missing_remaining_time\":","state_invalid");
+        bad_state("\"remaining_time_unit\":\"seconds\"","\"remaining_time_unit\":\"minutes\"","state_invalid");
+        bad_state("\"value\":47","\"value\":null","state_invalid");
+        bad_state("\"value\":\"combat\"","\"value\":\"unsupported\"","state_invalid");
         bad_state("\"value\":4","\"value\":null","state_invalid");
         bad_state("source_frame","missing_source_frame","state_invalid");
         bad_state("process_created","missing_process_created","state_invalid");
@@ -116,14 +125,14 @@ int run_recognition_tests() {
                 previous_file=save_state_record(previous,root/L"special-history");
             }
             const auto special=analyze_capture_archive(sample,maa);
-            if(special.category!="special_in_game" || special.funds.status!="unknown" || special.funds.value || special.source.id.empty())
+            if(special.category!="special_in_game" || special.funds.status!="unknown" || special.funds.value || special.stage.status!="unknown" || special.stage.value || special.remaining_time.status!="unknown" || special.remaining_time.value || special.source.id.empty())
                 throw Error("test_failed","Supported development special view was not recognized with unknown ordinary fields and own source");
             if(special.special_view!="information" && special.special_view!="result")
                 throw Error("test_failed","Special subtype missing");
             const auto special_file=save_state_record(special,root/L"special-history");
             const auto historical=load_state_record(special_file);
             if(historical.category!="special_in_game" || historical.special_view!=special.special_view ||
-               historical.frame_id!=special.source.id || historical.funds.value || historical.observation_status!="historical" ||
+               historical.frame_id!=special.source.id || historical.funds.value || historical.stage.value || historical.stage.status!="unknown" || historical.remaining_time.value || historical.remaining_time.status!="unknown" || historical.observation_status!="historical" ||
                load_state_record(record_file).funds.value!=4 || load_state_record(record_file).frame_id!=saved.id)
                 throw Error("test_failed","Special historical snapshot lost subtype/source or confirmed ordinary fields");
             if(!previous_file.empty()) {
@@ -155,6 +164,8 @@ int run_recognition_tests() {
             const auto funds_snapshot=load_state_record(save_state_record(observed,root/L"real-funds-states"));
             if(funds_snapshot.funds.value!=4 || funds_snapshot.funds.model_sha256!=observed.funds.model_sha256 || funds_snapshot.observation_status!="historical") throw Error("test_failed","Real funds snapshot lost value/provenance");
             std::cout << "recognition: development funds4 passed\n";
+            if(observed.stage.status!="recognized" || observed.stage.value!="rest" || observed.remaining_time.value || observed.remaining_time.status!="unknown")
+                throw Error("test_failed","Rest stage/time were not independently represented");
             auto without_icon=observed.source.capture;
             for(int y=890;y<936;++y) for(int x=1730;x<1776;++x)
                 for(int channel=0;channel<3;++channel) without_icon.frame.rgb[(y*1920+x)*3+channel]=0;
@@ -192,6 +203,39 @@ int run_recognition_tests() {
             if(observed.category!="ordinary_in_game" || observed.funds.status!="recognized" || observed.funds.value!=0)
                 throw Error("test_failed","Valid zero funds confused with unknown");
             std::cout << "recognition: development zero funds passed\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_COMBAT",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            const auto observed=analyze_capture_archive(sample,maa);
+            if(observed.category!="ordinary_in_game" || observed.stage.value!="combat" || observed.remaining_time.value!=47 ||
+               observed.remaining_time.status!="recognized" || observed.remaining_time.model_sha256.empty() || observed.funds.value)
+                throw Error("test_failed","Combat stage/timer47/funds distinction failed");
+            std::cout << "recognition: development combat timer47 and phase passed\n";
+            auto unreadable=observed.source.capture;
+            for(int y=50;y<160;++y) for(int x=1695;x<1835;++x)
+                for(int channel=0;channel<3;++channel) unreadable.frame.rgb[(y*1920+x)*3+channel]=0;
+            const auto blacked=save_capture(unreadable,root);
+            const auto unknown=analyze_capture_archive(blacked.directory,maa);
+            if(unknown.category!="ordinary_in_game" || unknown.stage.value!="combat" || unknown.remaining_time.value || unknown.remaining_time.status!="unknown" || unknown.funds.value || unknown.source.id!=blacked.id)
+                throw Error("test_failed","Unreadable timer corrupted independent stage/funds/source");
+            const auto historical=load_state_record(save_state_record(unknown,root/L"states"));
+            if(historical.stage.value!="combat" || historical.remaining_time.value || historical.observation_status!="historical")
+                throw Error("test_failed","Unreadable timer persistence changed field validity");
+            std::cout << "recognition: synthetic black TV keeps stage independent and timer unknown passed\n";
+        }
+        if(GetEnvironmentVariableW(L"STRONGHOLD_DEVELOPMENT_WAITING",sample,32768)) {
+            if(!GetEnvironmentVariableW(L"STRONGHOLD_MAA_ROOT",maa,32768)) throw Error("test_failed","Missing MAA root");
+            const auto observed=analyze_capture_archive(sample,maa);
+            if(observed.category!="ordinary_in_game" || observed.stage.value!="waiting" || observed.remaining_time.value!=28 || observed.funds.value)
+                throw Error("test_failed","Finished waiting frame falsely became ongoing combat");
+            std::cout << "recognition: development finished waiting phase passed\n";
+            auto no_phase=observed.source.capture;
+            for(int y=1109;y<1151;++y) for(int x=817;x<1195;++x)
+                for(int channel=0;channel<3;++channel) no_phase.frame.rgb[(y*1920+x)*3+channel]=0;
+            const auto missing=analyze_capture_archive(save_capture(no_phase,root).directory,maa);
+            if(missing.category!="ordinary_in_game" || missing.stage.status!="unknown" || missing.stage.value || missing.remaining_time.value!=28)
+                throw Error("test_failed","Completed progress without phase banner became combat");
+            std::cout << "recognition: completed enemy HUD alone does not imply ongoing combat passed\n";
         }
         auto expect_error = [&](const char* code, auto action) {
             try { action(); } catch(const Error& e) {

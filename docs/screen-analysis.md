@@ -40,13 +40,13 @@ C++ 入口 `analyze_capture_archive` 返回 Analysis，保留完整 LoadedCaptur
 
 - 局外：难度页精确识别「请选择模拟难度」与「开始模拟」（各平均 CTC 字符置信度 ≥0.95）；主菜单同时识别「终端」（≥0.80）和「编队」（≥0.90）。
 - 普通休整：必须同时识别回合标签、休息一下、准备就绪、刷新、收起（各 ≥0.95）；不从单一 HUD 存在下结论。
-- 普通战斗：必须同时识别回合标签、形如数字/数字的敌人进度和当前布局的「坚守」盟约标签（各 ≥0.95）。这里不解析字段值；其他盟约布局可拒识，不宣称通用战斗分类。
+- 普通战斗：必须同时识别回合标签、形如数字/数字的敌人进度和当前布局的「坚守」盟约标签（各 ≥0.95）。该分类门控之外，核心阶段/时间字段解析见 core-field-recognition.md；其他盟约布局可拒识，不宣称通用战斗分类。
 - 在普通局内判定前读取开发结果层的两个独立文本区域。两者满足当前正例契约时输出特殊结果层；只有一个高置信锚点时仍 veto 为 unknown，即便顶部 HUD 仍存在。
 - 信息页使用下述独立正例锚点；过渡缺少稳定普通局内正向证据而拒识。未知加载设计、其他特殊覆盖、语言、地图与 UI 改版仍可能误判，不能把有限文本 veto 当成通用覆盖层检测器。
 
 CTC confidence 是网络字符概率的均值，不是校准后的画面分类概率。evidence 包括实际文字与该均值，方便审计；不据开发置信度推导真实准确率。
 
-开发数据检查：原生 Release 构建后 S003、S015、S020、S034、S001 的各自 public tests 全部 green；S016、S018、S035、S036 通过同一公开 CLI 均返回 unknown。S034 曾在加入结果层 veto 之前被误报 ordinary，public test 首先 red，再加入 veto 后 green。S015/S020/S001 各自在仅实现前一类时先 red 再 green。最后组合运行所有这些 public tests 与既有存档测试通过。
+ticket 02 历史开发检查（特殊页 unknown 结果已由下述 ticket 06 正例支持取代）：原生 Release 构建后 S003、S015、S020、S034、S001 的各自 public tests 全部 green；S016、S018、S035、S036 通过同一公开 CLI 均返回 unknown。S034 曾在加入结果层 veto 之前被误报 ordinary，public test 首先 red，再加入 veto 后 green。S015/S020/S001 各自在仅实现前一类时先 red 再 green。最后组合运行所有这些 public tests 与既有存档测试通过。
 
 尚未运行预留验证；未宣称 ticket 02 四类完整验收通过。父集成对话可运行冻结候选评估，结果另行记录。离线真实存档检查不操作游戏，不等同独立实机采集验收。检查过程中一次合成存档发布出现 system code 5，未改动实现，下一次同一检查正常完成；这次系统临时目录错误不计为分类失败或通过证据。
 
@@ -60,7 +60,7 @@ CTC confidence 是网络字符概率的均值，不是校准后的画面分类�
 
 完整来源与逐图证据报告保存在 `captures/state-recognition-20261115-050329/classifier-02-development.json`（不纳入代码提交）。正式评估候选尚未执行。S019 明确列为当前拒识边界，不为提高开发分数放宽普通战斗规则。
 
-评估报告 schema 2 将真实语义分类结果与首版安全契约分开：已知画面输出 unknown 一律记为 rejected，即便该画面的冻结目标就是 unknown；`frozen_contract_match` 单独记录是否符合保守目标。开发组按真实语义统计为 ordinary_in_game 正确 16、拒识 3（含两张过渡），out_of_game 正确 13，special_in_game 拒识 3。既有开发 JSON 已仅据保存的原始分析重新解释上述两项，未重读图像或重跑模型；报告保留原始 executable/model/source 指纹及解释更新说明。
+ticket 02 历史评估报告（特殊页拒识统计已由 ticket 06 的开发结果取代）：评估报告 schema 2 将真实语义分类结果与首版安全契约分开：已知画面输出 unknown 一律记为 rejected，即便该画面的冻结目标就是 unknown；`frozen_contract_match` 单独记录是否符合保守目标。开发组按真实语义统计为 ordinary_in_game 正确 16、拒识 3（含两张过渡），out_of_game 正确 13，special_in_game 拒识 3。既有开发 JSON 已仅据保存的原始分析重新解释上述两项，未重读图像或重跑模型；报告保留原始 executable/model/source 指纹及解释更新说明。
 
 ## Ticket03：单个资金字段
 

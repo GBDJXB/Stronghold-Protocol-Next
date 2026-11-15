@@ -8,7 +8,8 @@ struct StateRecord {
     fs::path source_directory;
     std::string category, special_view, reason, recognizer_version, runtime_version, model_sha256, dictionary_sha256;
     std::vector<std::string> evidence;
-    NumericObservation funds;
+    NumericObservation funds, remaining_time;
+    StageObservation stage;
 };
 fs::path save_state_record(const Analysis& analysis, const fs::path& output);
 StateRecord load_state_record(const fs::path& file);
