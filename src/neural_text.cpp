@@ -59,13 +59,14 @@ struct NeuralTextRecognizer::Impl {
         throw Error("recognition_runtime","Local neural OCR: "+message);
     }
 };
-NeuralTextRecognizer::NeuralTextRecognizer(const fs::path& maa_root):impl(std::make_unique<Impl>()) {
+NeuralTextRecognizer::NeuralTextRecognizer(const fs::path& maa_root, TextModel selection):impl(std::make_unique<Impl>()) {
     if(!maa_root.is_absolute()) throw Error("recognition_model","MAA installation root must be absolute");
     std::error_code path_error;
     const auto root=fs::canonical(maa_root,path_error);
     if(path_error) throw Error("recognition_model","MAA installation root is missing or inaccessible");
-    const auto model=root/L"resource"/L"PaddleOCR"/L"rec"/L"inference.onnx";
-    const auto keys=root/L"resource"/L"PaddleOCR"/L"rec"/L"keys.txt";
+    const auto family=selection==TextModel::Characters ? L"PaddleCharOCR" : L"PaddleOCR";
+    const auto model=root/L"resource"/family/L"rec"/L"inference.onnx";
+    const auto keys=root/L"resource"/family/L"rec"/L"keys.txt";
     model_sha256=hash_file(model); dictionary_sha256=hash_file(keys);
     std::ifstream dictionary(keys,std::ios::binary);
     impl->dictionary.emplace_back(); // CTC blank index zero.

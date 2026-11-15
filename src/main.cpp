@@ -90,7 +90,14 @@ int wmain(int argc, wchar_t** argv) {
             for(size_t i=0;i<result.evidence.size();++i) {
                 if(i) std::cout << ','; std::cout << quote_json(result.evidence[i]);
             }
-            std::cout << "],\"metadata\":" << result.source.metadata_json << "}\n";
+            std::cout << "],\"funds\":{\"status\":" << quote_json(result.funds.status)
+                << ",\"value\":" << (result.funds.value ? std::to_string(*result.funds.value) : "null")
+                << ",\"confidence\":" << result.funds.confidence
+                << ",\"reason\":" << quote_json(result.funds.reason)
+                << ",\"raw_text\":" << quote_json(result.funds.raw_text)
+                << ",\"model_sha256\":" << quote_json(result.funds.model_sha256)
+                << ",\"dictionary_sha256\":" << quote_json(result.funds.dictionary_sha256)
+                << "},\"metadata\":" << result.source.metadata_json << "}\n";
             return 0;
         }
         if (std::wstring(argv[1]) == L"inspect-archive") {
