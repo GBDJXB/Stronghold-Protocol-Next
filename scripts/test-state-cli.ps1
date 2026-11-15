@@ -24,4 +24,8 @@ try {
         }
     }
     Write-Output 'state CLI: missing/corrupt/valid single JSON responses passed'
-} finally { Remove-Item -LiteralPath $root -Recurse -Force }
+} finally {
+    # Remove only the fixture file and then the empty directory; never recurse.
+    if (Test-Path -LiteralPath $record -PathType Leaf) { Remove-Item -LiteralPath $record -Force }
+    Remove-Item -LiteralPath $root -Force
+}
