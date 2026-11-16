@@ -271,7 +271,12 @@ def build(args):
 
 
 def query(args):
-    snapshot = load_snapshot(args.store / args.snapshot_id, args.snapshot_id)
+    directory = args.store / args.snapshot_id
+    require(directory.exists(), f'snapshot_id not found: {args.snapshot_id}')
+    require(directory.is_dir() and all((directory / name).is_file() for name in
+            ('snapshot.json', 'snapshot.sha256', 'source.html')),
+            f'incomplete snapshot archive: {args.snapshot_id}')
+    snapshot = load_snapshot(directory, args.snapshot_id)
     result = {key: snapshot[key] for key in ('snapshot_id', 'source', 'applicability', 'coverage', 'extractor')}
     if args.command == 'candidates':
         candidates = {}

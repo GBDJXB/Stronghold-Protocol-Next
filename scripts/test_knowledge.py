@@ -128,6 +128,66 @@ class KnowledgeCLI(unittest.TestCase):
         self.build(success=False)
         self.assertEqual(self.query()['data']['activation_count'], 2)
 
+    def test_missing_identifier_is_distinct_from_incomplete_and_unsupported_archive(self):
+        missing = self.query(snapshot='missing', success=False)
+        self.assertIn('snapshot_id not found: missing', missing['message'])
+        self.build()
+        directory = self.root / 'store' / 'one'
+        path = directory / 'snapshot.json'
+        data = json.loads(path.read_bytes())
+        path.write_text('corrupt bytes', encoding='utf-8')
+        damaged = self.query(success=False)
+        self.assertIn('snapshot SHA256 mismatch', damaged['message'])
+        data['format_version'] = 99
+        path.write_text(json.dumps(data), encoding='utf-8')
+        (directory / 'snapshot.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest())
+        unsupported = self.query(success=False)
+        self.assertIn('unsupported snapshot format_version', unsupported['message'])
+        path.unlink()
+        corrupt = self.query(success=False)
+        self.assertIn('incomplete snapshot archive: one', corrupt['message'])
+        self.assertNotEqual(missing['message'], corrupt['message'])
+
+    def test_concurrent_publishers_leave_one_complete_immutable_snapshot(self):
+        command = [sys.executable, '-X', 'utf8', str(CLI), 'build', '--source', str(self.source),
+                   '--manifest', str(self.manifest), '--store', str(self.root / 'store'),
+                   '--snapshot-id', 'one']
+        processes = [subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      text=True, encoding='utf-8') for _ in range(2)]
+        try:
+            outputs = [process.communicate(timeout=30) for process in processes]
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+        self.assertEqual(sorted(process.returncode for process in processes), [0, 1], outputs)
+        statuses = [json.loads(output[0])['status'] for output in outputs]
+        self.assertEqual(sorted(statuses), ['built', 'error'])
+        self.assertEqual(self.query()['data']['effect_source_text'], 'First +10%\nSecond <condition>.')
+        old = self.query()
+        self.build(success=False)
+        self.assertEqual(self.query(), old)
+
+    def test_interrupted_stage_is_not_queryable_and_does_not_block_rebuild(self):
+        self.build()
+        old = self.query()
+        # Filesystem fault fixture: a killed writer may leave an incomplete stage.
+        # This does not claim to interrupt at a particular instruction or prove power-loss durability.
+        pending = self.root / 'store' / '.pending-interrupted'
+        pending.mkdir()
+        (pending / 'snapshot.json').write_text('{incomplete', encoding='utf-8')
+        failed = self.query(snapshot='.pending-interrupted', success=False)
+        self.assertIn('invalid snapshot_id', failed['message'])
+        self.build('two')
+        self.assertEqual(self.query(), old)
+        self.assertEqual(self.query(snapshot='two')['data'], old['data'])
+        command = [sys.executable, '-X', 'utf8', str(CLI), 'query', '--store',
+                   str(self.root / 'store'), '--kind', 'covenant', '--name', 'Example']
+        unspecified = subprocess.run(command, capture_output=True, text=True, encoding='utf-8')
+        self.assertEqual(unspecified.returncode, 2)
+        self.assertIn('--snapshot-id', unspecified.stderr)
+
 
 class OperatorKnowledgeCLI(unittest.TestCase):
     save_manifest = KnowledgeCLI.save_manifest
@@ -264,6 +324,83 @@ class OperatorKnowledgeCLI(unittest.TestCase):
                                encoding='utf-8')
         self.refresh_source()
         self.build(success=False)
+
+    def test_full_rebuild_adds_modifies_and_removes_without_changing_history(self):
+        # Two independent synthetic source sets, never merged with archived records.
+        retired = HTML.replace('<script>"wgRevisionId":7</script>', '').replace(
+            'Example', 'Retired').replace('Operator A', 'Retired Operator')
+        retired_roster = ROSTER.replace('Operator A', 'Retired Operator').replace(
+            'Example<br>Outside', 'Retired')
+        self.source.write_text(HTML + retired + ROSTER + retired_roster, encoding='utf-8')
+        self.config['covenants'] = ['Example', 'Retired']
+        self.config['operators'] = ['Operator A', 'Retired Operator']
+        self.config['applicability'] = {'season': 'Synthetic old', 'sequence': 'I', 'client_build': None}
+        self.refresh_source()
+        self.build()
+        old_covenant = self.query()
+        old_operator = self.operator()
+        old_retired = self.operator('Retired Operator')
+        old_candidates = self.cli('candidates', '--kind', 'covenant', '--store',
+                                  self.root / 'store', '--snapshot-id', 'one')
+
+        added = HTML.replace('<script>"wgRevisionId":7</script>', '').replace(
+            'Example', 'Added').replace('Operator A', 'Added Operator')
+        added_roster = ROSTER.replace('Operator A', 'Added Operator').replace(
+            'Example<br>Outside', 'Added')
+        newer = (HTML.replace('First', 'Revised') + added +
+                 ROSTER.replace('Receive one tool', 'Receive revised tool') + added_roster)
+        self.source.write_text(newer.replace('"wgRevisionId":7', '"wgRevisionId":8'), encoding='utf-8')
+        self.config['covenants'] = ['Example', 'Added']
+        self.config['operators'] = ['Operator A', 'Added Operator']
+        self.config['applicability'] = {'season': 'Synthetic new', 'sequence': 'II', 'client_build': None}
+        self.config['source']['page_revision'] = 8
+        self.config['source']['acquired_at'] = '2026-11-16T12:00:00Z'
+        self.refresh_source()
+        self.build('two')
+        new_covenant = self.query(snapshot='two')
+        self.assertEqual(new_covenant['data']['effect_source_text'], 'Revised +10%\nSecond <condition>.')
+        self.assertEqual(new_covenant['coverage']['covenants'], ['Added', 'Example'])
+        self.assertEqual(new_covenant['coverage']['operators'], ['Added Operator', 'Operator A'])
+        self.assertEqual(new_covenant['source']['page_revision'], 8)
+        self.assertEqual(new_covenant['applicability'],
+                         {'season': 'Synthetic new', 'sequence': 'II', 'client_build': None})
+        self.assertNotEqual(old_covenant['source']['sha256'], new_covenant['source']['sha256'])
+        self.assertEqual(self.query('Added', 'two')['status'], 'found')
+        self.assertEqual(self.operator('Added Operator', 'two')['status'], 'found')
+        self.assertEqual(self.operator(snapshot='two')['data']['trait']['segments'][0]['source_text'],
+                         'Receive revised tool')
+        self.assertEqual(self.query('Retired', 'two')['status'], 'not_in_sample')
+        self.assertEqual(self.operator('Retired Operator', 'two')['status'], 'not_in_sample')
+        self.assertEqual(self.query('Added')['status'], 'not_in_sample')
+        self.assertEqual(self.operator('Added Operator')['status'], 'not_in_sample')
+        for kind, expected in [('covenant', ['Added', 'Example', 'Outside']),
+                               ('operator', ['Added Operator', 'Operator A'])]:
+            candidates = self.cli('candidates', '--kind', kind, '--store', self.root / 'store',
+                                  '--snapshot-id', 'two')
+            self.assertEqual([item['name'] for item in candidates['data']], expected)
+        self.assertEqual(self.query(), old_covenant)
+        self.assertEqual(self.operator(), old_operator)
+        self.assertEqual(self.operator('Retired Operator'), old_retired)
+        self.assertEqual(self.cli('candidates', '--kind', 'covenant', '--store',
+                                 self.root / 'store', '--snapshot-id', 'one'), old_candidates)
+        duplicate = self.build(success=False)
+        self.assertIn('snapshot_id already exists', duplicate['message'])
+        self.assertEqual(self.query(), old_covenant)
+
+    def test_failed_rebuild_does_not_publish_or_change_previous_results(self):
+        self.build()
+        old = self.operator()
+        for html, refresh, error in [
+                (HTML + ROSTER.replace('Receive one tool', 'Changed'), False, 'SHA256 mismatch'),
+                (HTML + ROSTER.replace('Example<br>Outside', 'Other'), True, 'membership conflict')]:
+            with self.subTest(error=error):
+                self.source.write_text(html, encoding='utf-8')
+                if refresh:
+                    self.refresh_source()
+                failed = self.build('failed', success=False)
+                self.assertIn(error, failed['message'])
+                self.assertIn('snapshot_id not found', self.operator(snapshot='failed', success=False)['message'])
+                self.assertEqual(self.operator(), old)
 
 
 ROSTER = '<table class="wikitable mw-collapsible mw-collapsed"><tbody>\n<tr><th>Tier test</th></tr><tr><th>Name</th><th>盟约</th><th>特质</th></tr>\n<tr><td><a title="Operator A">A</a></td><td>Example<br>Outside</td>\n<td><div style="position:absolute">Equipment</div>Receive one tool<span class="mdi-arrow-right"></span><p>Receive two tools</p></td></tr>\n</tbody></table>'
