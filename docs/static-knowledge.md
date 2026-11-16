@@ -1,6 +1,6 @@
-# 离线静态知识快照（ticket 01）
+# 离线静态知识快照（tickets 01–02）
 
-独立 Python 3 工具从显式提供的固定 PRTS 渲染 HTML 提取 manifest 声明的盟约。不会联网、读取截图、运行 OCR 或产生局面观测。当前仅提供盟约查询；成员、干员与特质由后续票实现。
+独立 Python 3 工具从显式提供的固定 PRTS 渲染 HTML 提取 manifest 声明的盟约。不会联网、读取截图、运行 OCR 或产生局面观测。支持盟约、干员及规范名称候选查询；通过 manifest 显式声明覆盖范围，不内置三加三样本筛选器。
 
 ## 环境与命令
 
@@ -15,6 +15,9 @@ python -X utf8 scripts/test_knowledge.py
 ```powershell
 python -X utf8 scripts/knowledge.py build --source <固定HTML路径> --manifest <manifest路径> --store knowledge-local --snapshot-id <新标识>
 python -X utf8 scripts/knowledge.py query --store knowledge-local --snapshot-id <标识> --kind covenant --name <规范名称>
+python -X utf8 scripts/knowledge.py query --store knowledge-local --snapshot-id <标识> --kind operator --name <规范名称>
+python -X utf8 scripts/knowledge.py candidates --store knowledge-local --snapshot-id <标识> --kind covenant
+python -X utf8 scripts/knowledge.py candidates --store knowledge-local --snapshot-id <标识> --kind operator
 ```
 
 命令成功输出 JSON 并返回 0；来源、结构、版本或完整性错误输出 `status: error` 并返回 1。缺少 CLI 参数由 argparse 返回 2。查询不到返回 `not_in_sample`，仅表示未收录。必须显式指定 snapshot_id，不推断当前版本。
@@ -40,6 +43,8 @@ python -X utf8 scripts/knowledge.py query --store knowledge-local --snapshot-id 
 }
 ```
 
+可选 `operators` 字段为规范名称列表（可为空），例如 `"operators": ["Operator A"]`。只有显式提供该字段时才启用干员与双向关系提取；省略时保留 ticket 01 的原始输出结构。列表不允许重复、空名、非字符串或两端空白。
+
 `page_revision` 可为正整数；来源含 wgRevisionId 时必须与之相符，来源不含时必须为 null。获取时间需含时区。赛季、序列、客户端构建独立表达，未知使用 null。`dependency_revisions` 可记载已知依赖；为 null 时必须显式记录限制。来源 URL 和署名由材料提供者声明，工具不能证明其真实性。
 
 ## 存储与校验
@@ -50,9 +55,9 @@ python -X utf8 scripts/knowledge.py query --store knowledge-local --snapshot-id 
 
 先在 store 内临时目录写入并重新校验，再在 Windows 同卷重命名发布；存在目标时拒绝覆盖。失败清理本次临时目录，不影响已发布快照。进程被强制终止可能留下 `.pending-*`，查询不会选择这些目录。这里的原子发布不等同于断电持久性保证。
 
-读取时检查 JSON 重复键、版本、SHA-256，再从归档 HTML 和 manifest 重新提取并逐项比较（包含类型）。因此重新计算校验和也不能使错误字段通过语义校验。完整性校验不是数字签名，不能识别有权替换全部材料的攻击者。当前格式要求相同提取器、Python 与依赖版本，环境变更需显式迁移或在原环境读取，不静默重解释旧规则。
+读取时检查 JSON 重复键、版本、SHA-256，再从归档 HTML 和 manifest 重新提取并逐项比较（包含类型）。因此重新计算校验和也不能使错误字段通过语义校验。完整性校验不是数字签名，不能识别有权替换全部材料的攻击者。省略 `operators` 的 manifest 沿用提取器 `1.0.0` 和原有归档字段，旧 ticket 01 快照保持可读；显式 `operators` 使用额外能力标记 `extractor.capability: operators-1`，新字段也参与重新提取比较。不为此增量扩展提升基础提取器版本，避免把原先可读的旧快照整体拒绝。当前格式仍要求相同提取器能力、Python 与依赖版本，环境变更需显式迁移或在原环境读取，不静默重解释旧规则。
 
-设 HTML 字节数为 H、选定盟约数为 C；一次全页扫描建立标题索引，解析与保存主成本为 O(H)，记录排序 O(C log C)，空间 O(H+C)。当前读取也重解析 HTML，换取来源与业务字段一致性；尚未做大型数据集或高频查询性能验收。
+设 HTML 字节数为 H、选定盟约数为 C、干员数为 O、每人最多 M 个盟约名称。在支持的固定嵌套布局下，提取的上界为 O(H + C×O×(O+M) + C log C + O log O)，额外关系校验来自遍历样本交叉组合；空间为 O(H+C×O+O×M)。小样本以明确校验优先，不宣称适合全赛季高频查询。当前读取也重解析 HTML，换取来源与业务字段一致性；尚未做大型数据集或高频查询性能验收。
 
 ## 验证记录（2026-11-15）
 
@@ -67,6 +72,33 @@ python -X utf8 build/knowledge-01/check_real.py --source D:/Projects/Stronghold-
 ```
 
 两次真实 HTML 构建、指定快照重读、逐项 literal 比较、来源、未知名称及去掉 snapshot_id 后的完整查询结果一致性均通过。本地核对脚本、manifest、HTML、生成快照及原文期望不提交；该命令仅在持有这些私有材料的本地目录可复跑。真实材料获取时刻据探索报告分钟记录，未伪称秒级精度。此次没有独立复审或真实游戏验证，也不证明游戏当前规则、完整历史依赖或完整赛季覆盖。
+
+## 干员、关系和候选语义
+
+扩展提取通过直接三列的「盟约／特质」表头辨认干员表，再定位首列规范 `title` 链接及直接所属行，避免把盟约成员缩略表和外层嵌套表误当作干员条目。要求每个选定干员有唯一行、三格结构、非空无重复盟约名称、唯一类型标签及非空特质段；同一行含多个选定干员的歧义情况拒绝导入。盟约三行分别要求单格；对所有声明的盟约与干员逐对核验正反成员关系，任一方向冲突即整个构建失败。
+
+盟约 `members` 仅包含声明覆盖的干员交集，逐项带成员区定位，`members_complete` 始终为 false。干员 `memberships` 保留来源顺序和样本外名称；查询时为每项增加 `effect_status`，只有 `found` 才带 `covenant` 规则记录，未收录效果为 `not_in_sample`。成员身份与特质分开，不产生层数贡献、公式执行结果或局面状态。
+
+`trait.type_source_text` 独立保存特质类型，`trait.segments` 按来源箭头顺序保存完整文本及 `index_1based`；无箭头时只保留一个段。当前不把有序段擅自标为某游戏等级，亦不把单段复制成普通／精锐两段。换行及实体采用与效果文本相同的规则；仅保证本次核验布局的文本提取。
+
+`candidates` 返回去重排序的名称、逐项 `locators`，并保留顶层 snapshot_id、来源、适用范围、提取器和 coverage。盟约候选包含已收录规则及仅由干员关联得知的名称，分别标记 `effect_status: found/not_in_sample`；`coverage.covenants` 只列出已收录效果的名称。干员候选只来自已收录干员记录。候选不是 OCR 纠正或当前画面证据，空查询仍只表示未收录。
+
+## Ticket 02 验证记录（2026-11-15）
+
+TDD 在已批准的离线 CLI 边界上依次观察 red→green：干员查询、候选命令、重复干员标识、嵌套与同类成员表误匹配、单行身份歧义及盟约行单格要求。其余回归覆盖正反关系冲突、重复成员／行／名称、缺少特质类型／内容／单元格、异常箭头、单段特质、篡改关系后重算哈希、确定性和旧票拒绝路径。合成源不包含游戏原文。
+
+真实材料核对未使用探索生成数据作为期望。执行者直接阅读固定 HTML 的三项效果单元格及两处成员区域，并对照 revision.json 修订 450448 的三个参战干员模板参数，将完整效果、全部特质段、激活人数、关系及位置写成私有 literal expectations：三项盟约、三名干员、五条样本内关系，另保留维多利亚／乌萨斯的名称而不补效果。来源哈希与 ticket 01 相同。干员来源为全页第 118 表（承曦格雷伊，Ⅱ阶）和第 119 表（水灯心、奥尔佳，Ⅲ阶）。标签类型与顺序有证据，程序不推演游戏数值。私有核对脚本每次使用新临时目录，避免重复运行覆盖历史。
+
+实际运行命令：
+
+```powershell
+python -X utf8 scripts/test_knowledge.py
+python -X utf8 -m py_compile scripts/knowledge.py scripts/test_knowledge.py
+python -X utf8 build/knowledge-02/check_real.py --source D:/Projects/Stronghold-Protocol-Next/.scratch/static-knowledge/exploration/round2/record.html
+python -X utf8 scripts/knowledge.py query --store D:/Projects/Stronghold-Protocol-Next/.worktrees/static-knowledge-integration/build/knowledge-01/store --snapshot-id literal-b --kind covenant --name 灵巧
+```
+
+14 个合成 CLI 测试通过；真实材料两次完整构建、三项完整效果／人数、三名干员全部特质段／成员关系、候选、样本外名称、来源位置及去掉 snapshot_id 后的业务查询一致性通过。旧 ticket 01 已发布的 literal-b 快照在新实现下只读重开通过，未重写旧归档。私有 `build/knowledge-02/check_real.py`、manifest、来源和生成数据不提交；最后两条命令需要持有本地材料。没有真实游戏截图或游戏操作、没有 OCR／识别接入；不证明真实赛季兼容性或规则在当前客户端有效。
 
 ## 来源与使用边界
 

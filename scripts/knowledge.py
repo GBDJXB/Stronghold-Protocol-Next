@@ -46,6 +46,12 @@ def validate_manifest(manifest, raw):
             all(type(n) is str and n.strip() == n and bool(n) for n in names),
             'covenants must be nonempty canonical names')
     require(len(names) == len(set(names)), 'duplicate covenant name')
+    if 'operators' in manifest:
+        operators = manifest['operators']
+        require(type(operators) is list and
+                all(type(n) is str and bool(n) and n.strip() == n for n in operators),
+                'operators must be canonical names')
+        require(len(operators) == len(set(operators)), 'duplicate operator name')
     source = manifest['source']
     require(type(source) is dict, 'source must be an object')
     for field in ('url', 'acquired_at', 'sha256', 'attribution'):
@@ -116,13 +122,100 @@ def extract(raw, manifest):
                          'effect_source_text': effect,
                          'locator': {'file': 'source.html', 'table_index_1based': table_positions[id(table)],
                                      'heading': name, 'effect_row_1based': 2, 'effect_cell_1based': 1}}
+    if 'operators' in manifest:
+        operators = extract_operators(soup, manifest['operators'], table_positions)
+        for name, record in records.items():
+            table = matches[name][0].find_parent('table')
+            rows = table.find('tbody', recursive=False).find_all('tr', recursive=False)
+            require(all(len(row.find_all('td', recursive=False)) == 1 for row in rows),
+                    f'{name}: expected one cell per covenant row')
+            member_row = rows[2]
+            names = [a['title'] for a in member_row.find_all('a', title=True)
+                     if a['title'] in operators]
+            require(len(names) == len(set(names)), f'{name}: duplicate sampled member')
+            record['members'] = []
+            record['members_complete'] = False
+            for operator_name, operator in operators.items():
+                forward = operator_name in names
+                reverse = name in [m['name'] for m in operator['memberships']]
+                require(forward == reverse, f'{name}/{operator_name}: membership conflict')
+                if forward:
+                    record['members'].append({'name': operator_name,
+                        'locator': {'file': 'source.html',
+                                    'table_index_1based': table_positions[id(table)],
+                                    'row_1based': 3, 'anchor_title': operator_name}})
+        return records, operators
+    return records
+
+
+def extract_operators(soup, selected, table_positions):
+    matches = {name: [] for name in selected}
+    for table in soup.select('table.wikitable.mw-collapsible.mw-collapsed'):
+        body = table.find('tbody', recursive=False)
+        if body is None:
+            continue
+        rows = body.find_all('tr', recursive=False)
+        headers = [[cell.get_text(strip=True) for cell in row.find_all(['td', 'th'], recursive=False)]
+                   for row in rows]
+        if not any(len(header) == 3 and header[1:] == ['盟约', '特质'] for header in headers):
+            continue
+        for index, row in enumerate(rows, 1):
+            cells = row.find_all('td', recursive=False)
+            if not cells:
+                continue
+            names = {a['title'] for a in cells[0].find_all('a', title=True)
+                     if a.find_parent('tr') is row} & matches.keys()
+            require(len(names) <= 1, 'ambiguous selected operator identity in roster row')
+            for name in names:
+                matches[name].append((table, index, cells))
+    records = {}
+    for name in sorted(selected):
+        require(len(matches[name]) == 1, f'{name}: expected one operator roster row')
+        table, row_index, cells = matches[name][0]
+        require(len(cells) == 3, f'{name}: expected three operator cells')
+        locator = {'file': 'source.html', 'table_index_1based': table_positions[id(table)],
+                   'row_1based': row_index, 'anchor_title': name}
+        memberships = text_with_breaks(cells[1]).splitlines()
+        require(bool(memberships) and len(memberships) == len(set(memberships)),
+                f'{name}: missing or duplicate membership')
+        trait = copy.deepcopy(cells[2])
+        labels = [div for div in trait.find_all('div', recursive=False)
+                  if re.search(r'position\s*:\s*absolute', div.get('style', ''))]
+        require(len(labels) == 1 and bool(labels[0].get_text(strip=True)),
+                f'{name}: missing unique trait type')
+        trait_type = labels[0].get_text(strip=True)
+        labels[0].decompose()
+        arrows = trait.select('.mdi-arrow-right')
+        require(len(arrows) <= 1, f'{name}: unsupported trait segment structure')
+        # Split the DOM at the observed arrow, without inferring gameplay tiers.
+        parts = ['']
+        for node in trait.descendants:
+            if isinstance(node, bs4.element.Tag) and 'mdi-arrow-right' in node.get('class', []):
+                parts.append('')
+            elif isinstance(node, bs4.element.Tag) and node.name == 'br':
+                parts[-1] += '\n'
+            elif isinstance(node, bs4.element.NavigableString) and not isinstance(node, bs4.element.Comment):
+                parts[-1] += str(node)
+        segments = ['\n'.join(line.strip() for line in part.splitlines() if line.strip())
+                    for part in parts]
+        require(all(segments), f'{name}: empty trait segment')
+        records[name] = {'name': name, 'locator': locator,
+            'memberships': [{'name': member, 'locator': dict(locator, cell_1based=2)}
+                            for member in memberships],
+            'trait': {'type_source_text': trait_type,
+                      'segments': [{'index_1based': i, 'source_text': text}
+                                   for i, text in enumerate(segments, 1)],
+                      'locator': dict(locator, cell_1based=3)}}
     return records
 
 
 def make_snapshot(snapshot_id, manifest, raw):
     validate_manifest(manifest, raw)
     records = extract(raw, manifest)
-    return {'format_version': FORMAT_VERSION, 'snapshot_id': snapshot_id,
+    operators = None
+    if 'operators' in manifest:
+        records, operators = records
+    snapshot = {'format_version': FORMAT_VERSION, 'snapshot_id': snapshot_id,
                 'manifest': manifest, 'source': manifest['source'],
                 'applicability': manifest['applicability'],
                 'extractor': {'version': EXTRACTOR_VERSION, 'python': sys.version.split()[0],
@@ -131,6 +224,11 @@ def make_snapshot(snapshot_id, manifest, raw):
                 'coverage': {'covenants': sorted(records), 'operators': [],
                              'members_complete': False, 'season_complete': False},
                 'covenants': records}
+    if operators is not None:
+        snapshot['operators'] = operators
+        snapshot['coverage']['operators'] = sorted(operators)
+        snapshot['extractor']['capability'] = 'operators-1'
+    return snapshot
 
 
 def load_snapshot(directory, snapshot_id):
@@ -175,8 +273,30 @@ def build(args):
 def query(args):
     snapshot = load_snapshot(args.store / args.snapshot_id, args.snapshot_id)
     result = {key: snapshot[key] for key in ('snapshot_id', 'source', 'applicability', 'coverage', 'extractor')}
-    record = snapshot['covenants'].get(args.name)
-    result.update({'status': 'found', 'kind': 'covenant', 'data': record} if record else {
+    if args.command == 'candidates':
+        candidates = {}
+        records = snapshot.get('covenants' if args.kind == 'covenant' else 'operators', {})
+        for name, record in records.items():
+            candidates[name] = {'name': name, 'locators': [record['locator']]}
+            if args.kind == 'covenant':
+                candidates[name]['effect_status'] = 'found'
+        if args.kind == 'covenant':
+            for operator in snapshot.get('operators', {}).values():
+                for membership in operator['memberships']:
+                    candidate = candidates.setdefault(membership['name'], {
+                        'name': membership['name'], 'effect_status': 'not_in_sample', 'locators': []})
+                    candidate['locators'].append(membership['locator'])
+        result.update({'status': 'found', 'kind': args.kind,
+                       'data': [candidates[name] for name in sorted(candidates)]})
+        return result
+    record = copy.deepcopy(snapshot['covenants' if args.kind == 'covenant' else 'operators'].get(args.name)) if args.kind == 'covenant' or 'operators' in snapshot else None
+    if record and args.kind == 'operator':
+        for membership in record['memberships']:
+            covenant = snapshot['covenants'].get(membership['name'])
+            membership['effect_status'] = 'found' if covenant else 'not_in_sample'
+            if covenant:
+                membership['covenant'] = covenant
+    result.update({'status': 'found', 'kind': args.kind, 'data': record} if record else {
         'status': 'not_in_sample', 'name': args.name, 'meaning': 'Not collected; does not imply absence from game'})
     return result
 
@@ -189,9 +309,11 @@ def main():
     b.add_argument('--source', type=Path, required=True)
     b.add_argument('--manifest', type=Path, required=True)
     q = sub.add_parser('query')
-    q.add_argument('--kind', choices=['covenant'], required=True)
+    q.add_argument('--kind', choices=['covenant', 'operator'], required=True)
     q.add_argument('--name', required=True)
-    for command in (b, q):
+    c = sub.add_parser('candidates')
+    c.add_argument('--kind', choices=['covenant', 'operator'], required=True)
+    for command in (b, q, c):
         command.add_argument('--store', type=Path, required=True)
         command.add_argument('--snapshot-id', required=True)
     args = parser.parse_args()
