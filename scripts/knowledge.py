@@ -117,6 +117,19 @@ def extract(raw, manifest):
         count_field = labels[0].find_parent('div')
         require(count_field is not None and count_field.find_parent('tr') is rows[0],
                 f'{name}: missing activation count div')
+        heading = matches[name][0]
+        heading_ancestors = list(heading.parents)
+        require(not any(count_field is ancestor for ancestor in heading_ancestors),
+                f'{name}: ambiguous activation count container')
+        # Use the complete branch beside the heading, not its innermost div:
+        # formatting wrappers must not hide a suffix from the field validator.
+        while not any(count_field.parent is ancestor for ancestor in heading_ancestors):
+            count_field = count_field.parent
+        field_strings = {id(node) for node in count_field.strings}
+        heading_strings = {id(node) for node in heading.strings}
+        require(all(not node.strip() or id(node) in field_strings | heading_strings
+                    for node in rows[0].strings),
+                f'{name}: ambiguous activation count text outside container')
         count = re.fullmatch(r'激活所需人数\s+([1-9][0-9]*)',
                              count_field.get_text(' ', strip=True))
         require(count is not None, f'{name}: invalid activation count')

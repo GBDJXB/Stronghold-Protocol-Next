@@ -112,6 +112,39 @@ class KnowledgeCLI(unittest.TestCase):
                 self.assertIn('activation count', failed['message'])
                 self.query(snapshot=f'invalid-{index}', success=False)
 
+    def test_nested_activation_count_cannot_hide_a_suffix_outside_the_nearest_div(self):
+        field = '<div>激活所需人数 <b>2</b></div>'
+        for index, suffix in enumerate(['.5', 'e3', '3', ' people']):
+            with self.subTest(suffix=suffix):
+                replacement = ('<div><div><div style="display:inline">'
+                               '激活所需人数 <b>2</b></div></div>' + suffix + '</div>')
+                self.source.write_text(HTML.replace(field, replacement), encoding='utf-8')
+                self.config['source']['sha256'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+                self.save_manifest()
+                snapshot = f'nested-invalid-{index}'
+                failed = self.build(snapshot, success=False)
+                self.assertIn('activation count', failed['message'])
+                self.query(snapshot=snapshot, success=False)
+
+    def test_activation_count_boundary_preserves_wrapped_heading_and_rejects_external_text(self):
+        header = '<b>Example</b><div>激活所需人数 <b>2</b></div>'
+        valid = ('<div style="display:flex"><div><span><img alt="icon"></span></div>'
+                 '<div><b>Example</b><div><div><span>激活所需人数 '
+                 '<b>2</b></span></div></div></div></div>')
+        self.source.write_text(HTML.replace(header, valid), encoding='utf-8')
+        self.config['source']['sha256'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.save_manifest()
+        self.build()
+        self.assertEqual(self.query()['data']['activation_count'], 2)
+        invalid = valid.replace('<b>Example</b>', '<b>Example</b>.5')
+        self.source.write_text(HTML.replace(header, invalid), encoding='utf-8')
+        self.config['source']['sha256'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.save_manifest()
+        failed = self.build('outside', success=False)
+        self.assertIn('activation count', failed['message'])
+        self.query(snapshot='outside', success=False)
+        self.assertEqual(self.query()['data']['activation_count'], 2)
+
     def test_invalid_or_unsupported_extractor_metadata_is_rejected(self):
         self.build()
         directory = self.root / 'store' / 'one'
