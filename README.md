@@ -1,5 +1,7 @@
 # Stronghold-Protocol-Next
 
+独立的离线静态知识导入与盟约查询见 [静态知识快照](docs/static-knowledge.md)；与截图、OCR 和局面记录分离。
+
 明日方舟 PC 端「卫戍协议-规程」研究工具。当前提供单次、只读的 Windows Graphics Capture (WGC) 窗口截图与原图归档；另提供有限范围的离线分类与字段识别；不发送游戏输入，不实现策略或周期调度。
 
 ## 构建与离线检查

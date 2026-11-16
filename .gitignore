@@ -1,3 +1,5 @@
 /build/
 /captures/
 *.vcxproj.user
+/knowledge-local/
+__pycache__/
