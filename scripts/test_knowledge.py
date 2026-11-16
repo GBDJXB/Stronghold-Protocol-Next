@@ -91,6 +91,27 @@ class KnowledgeCLI(unittest.TestCase):
         self.assertEqual(result['data']['effect_source_text'], 'First +10%\nSecond <condition>.')
         self.assertEqual(json.loads(path.read_bytes()), data)
 
+    def test_activation_count_uses_the_full_labelled_div_across_nested_formatting(self):
+        field = '<div>激活所需人数 <b>2</b></div>'
+        valid = '<div><span>激活所需人数 <b>2</b></span></div>'
+        self.source.write_text(HTML.replace(field, valid), encoding='utf-8')
+        self.config['source']['sha256'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.save_manifest()
+        self.build()
+        self.assertEqual(self.query()['data']['activation_count'], 2)
+        for index, replacement in enumerate([
+                '<div><span>激活所需人数 <b>2</b></span>.5</div>',
+                '<div><span>激活所需人数 <b>2</b></span>e3</div>',
+                '<div><span>激活所需人数 <b>2</b></span> people</div>',
+                '<span>激活所需人数 <b>2</b></span>']):
+            with self.subTest(replacement=replacement):
+                self.source.write_text(HTML.replace(field, replacement), encoding='utf-8')
+                self.config['source']['sha256'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+                self.save_manifest()
+                failed = self.build(f'invalid-{index}', success=False)
+                self.assertIn('activation count', failed['message'])
+                self.query(snapshot=f'invalid-{index}', success=False)
+
     def test_invalid_or_unsupported_extractor_metadata_is_rejected(self):
         self.build()
         directory = self.root / 'store' / 'one'

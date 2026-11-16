@@ -114,8 +114,11 @@ def extract(raw, manifest):
         require(matches[name][0].find_parent('tr') is rows[0], f'{name}: misplaced heading')
         labels = rows[0].find_all(string=re.compile('激活所需人数'))
         require(len(labels) == 1, f'{name}: missing unique activation count')
+        count_field = labels[0].find_parent('div')
+        require(count_field is not None and count_field.find_parent('tr') is rows[0],
+                f'{name}: missing activation count div')
         count = re.fullmatch(r'激活所需人数\s+([1-9][0-9]*)',
-                             labels[0].parent.get_text(' ', strip=True))
+                             count_field.get_text(' ', strip=True))
         require(count is not None, f'{name}: invalid activation count')
         cells = rows[1].find_all('td', recursive=False)
         require(len(cells) == 1, f'{name}: missing effect cell')
