@@ -65,6 +65,52 @@ class KnowledgeCLI(unittest.TestCase):
         self.assertFalse(result['coverage']['members_complete'])
         self.assertEqual(self.query('Other')['status'], 'not_in_sample')
 
+    def test_activation_count_requires_the_complete_canonical_positive_integer(self):
+        for index, count in enumerate(['2.5', '2e3', '+2', '-2', '0', '02', '2 people', '2x', '2/3', '２']):
+            with self.subTest(count=count):
+                self.source.write_text(HTML.replace('<b>2</b>', f'<b>{count}</b>'), encoding='utf-8')
+                self.config['source']['sha256'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+                self.save_manifest()
+                snapshot = f'invalid-{index}'
+                failed = self.build(snapshot, success=False)
+                self.assertIn('activation count', failed['message'])
+                self.query(snapshot=snapshot, success=False)
+
+    def test_historical_build_environment_is_preserved_when_reparse_matches(self):
+        self.build()
+        directory = self.root / 'store' / 'one'
+        path = directory / 'snapshot.json'
+        data = json.loads(path.read_bytes())
+        historical = dict(data['extractor'], python='3.13.6', beautifulsoup4='4.14.2',
+                          soupsieve='2.8.2', typing_extensions='4.14.0')
+        data['extractor'] = historical
+        path.write_text(json.dumps(data), encoding='utf-8')
+        (directory / 'snapshot.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest())
+        result = self.query()
+        self.assertEqual(result['extractor'], historical)
+        self.assertEqual(result['data']['effect_source_text'], 'First +10%\nSecond <condition>.')
+        self.assertEqual(json.loads(path.read_bytes()), data)
+
+    def test_invalid_or_unsupported_extractor_metadata_is_rejected(self):
+        self.build()
+        directory = self.root / 'store' / 'one'
+        path = directory / 'snapshot.json'
+        original = path.read_bytes()
+        for field, value, error in [
+                ('version', '9.0.0', 'unsupported extractor version'),
+                ('parser', 'other.parser', 'unsupported extractor parser'),
+                ('python', 3.13, 'invalid extractor python version'),
+                ('beautifulsoup4', '', 'invalid extractor beautifulsoup4 version'),
+                ('soupsieve', None, 'invalid extractor soupsieve version'),
+                ('typing_extensions', 'unknown', 'invalid extractor typing_extensions version'),
+                ('extra', 'unexpected', 'invalid extractor metadata schema')]:
+            with self.subTest(field=field):
+                data = json.loads(original)
+                data['extractor'][field] = value
+                path.write_text(json.dumps(data), encoding='utf-8')
+                (directory / 'snapshot.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest())
+                self.assertIn(error, self.query(success=False)['message'])
+
     def test_invalid_input_never_publishes_and_preserves_existing_snapshot(self):
         self.build()
         self.source.write_text(HTML.replace('First', 'Changed'), encoding='utf-8')
@@ -292,6 +338,30 @@ class OperatorKnowledgeCLI(unittest.TestCase):
         path.write_text(json.dumps(data), encoding='utf-8')
         (directory / 'snapshot.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest())
         self.operator(success=False)
+
+    def test_historical_operator_archive_preserves_provenance_and_checks_capability(self):
+        self.build()
+        directory = self.root / 'store' / 'one'
+        path = directory / 'snapshot.json'
+        data = json.loads(path.read_bytes())
+        data['extractor']['python'] = '3.13.6'
+        data['extractor']['beautifulsoup4'] = '4.14.2'
+        def write_archive():
+            path.write_text(json.dumps(data), encoding='utf-8')
+            (directory / 'snapshot.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest())
+        write_archive()
+        result = self.operator()
+        self.assertEqual(result['extractor'], data['extractor'])
+        self.assertEqual(result['data']['memberships'][0]['covenant']['activation_count'], 2)
+        data['operators']['Operator A']['trait']['segments'][0]['source_text'] = 'Tampered'
+        write_archive()
+        self.assertIn('mismatch', self.operator(success=False)['message'])
+        data['extractor']['capability'] = 'operators-99'
+        write_archive()
+        self.assertIn('unsupported extractor capability', self.operator(success=False)['message'])
+        del data['extractor']['python']
+        write_archive()
+        self.assertIn('invalid extractor metadata schema', self.operator(success=False)['message'])
 
     def test_ambiguous_operator_identity_is_rejected(self):
         self.config['operators'].append('Operator B')

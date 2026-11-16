@@ -63,11 +63,11 @@ python -X utf8 scripts/knowledge.py candidates --store knowledge-local --snapsho
 
 `<store>/<snapshot_id>/` 包含 `snapshot.json`、`snapshot.sha256` 和固定字节的 `source.html`。JSON 保存来源、manifest、适用范围、提取器及 Python/依赖版本、覆盖范围和盟约记录。来源位置记录归档文件名、全页 table 的一基序号、规范标题、效果行与单元格序号。查询保留全部这些上下文；成员名单与赛季完整性当前均为 false。
 
-提取要求唯一盟约标题、直接 tbody 的三行结构、正数激活人数、非空完整效果单元格及成员区标题；拒绝缺失、重复、哈希不符、修订矛盾及非法 UTF-8。效果保留文本和 `<br>` 换行、解码实体、去除 HTML 格式标记及各行边缘空白，不执行公式。仅支持已核验的固定渲染布局；不运行 JavaScript/CSS，也不承诺任意网页的浏览器视觉等价。
+提取要求唯一盟约标题、直接 tbody 的三行结构、正数激活人数、非空完整效果单元格及成员区标题；拒绝缺失、重复、哈希不符、修订矛盾及非法 UTF-8。激活人数校验完整标签字段，只接受无前导零的 ASCII 正整数；小数、指数、正负号、分数或尾随文字均拒绝，不截取数字前缀。效果保留文本和 `<br>` 换行、解码实体、去除 HTML 格式标记及各行边缘空白，不执行公式。仅支持已核验的固定渲染布局；不运行 JavaScript/CSS，也不承诺任意网页的浏览器视觉等价。
 
 先在 store 内临时目录写入并重新校验，再在 Windows 同卷重命名发布；存在目标时拒绝覆盖。失败清理本次临时目录，不影响已发布快照。进程被强制终止可能留下 `.pending-*`，查询不会选择这些目录。这里的原子发布不等同于断电持久性保证。
 
-读取时检查 JSON 重复键、版本、SHA-256，再从归档 HTML 和 manifest 重新提取并逐项比较（包含类型）。因此重新计算校验和也不能使错误字段通过语义校验。完整性校验不是数字签名，不能识别有权替换全部材料的攻击者。省略 `operators` 的 manifest 沿用提取器 `1.0.0` 和原有归档字段，旧 ticket 01 快照保持可读；显式 `operators` 使用额外能力标记 `extractor.capability: operators-1`，新字段也参与重新提取比较。不为此增量扩展提升基础提取器版本，避免把原先可读的旧快照整体拒绝。当前格式仍要求相同提取器能力、Python 与依赖版本，环境变更需显式迁移或在原环境读取，不静默重解释旧规则。
+读取时检查 JSON 重复键、版本、SHA-256，再从归档 HTML 和 manifest 重新提取并逐项比较（包含类型）。因此重新计算校验和也不能使错误字段通过语义校验。完整性校验不是数字签名，不能识别有权替换全部材料的攻击者。省略 `operators` 的 manifest 沿用提取器 `1.0.0` 和原有归档字段，旧 ticket 01 快照保持可读；显式 `operators` 使用额外能力标记 `extractor.capability: operators-1`。读取要求受支持的格式、提取器版本、解析器及能力，并严格校验提取器元数据的字段集合、类型和版本字符串。原构建 Python／依赖版本是历史来源记录，不要求与当前校验环境完全相同：当前环境重解析所得业务数据、来源和其余归档字段必须完全一致，否则拒绝读取。成功查询仍返回原始提取器及环境记录，不改写旧归档，也不把当前校验环境伪装为原构建环境；不支持的版本或能力明确报错。
 
 设 HTML 字节数为 H、选定盟约数为 C、干员数为 O、每人最多 M 个盟约名称。在支持的固定嵌套布局下，提取的上界为 O(H + C×O×(O+M) + C log C + O log O)，额外关系校验来自遍历样本交叉组合；空间为 O(H+C×O+O×M)。小样本以明确校验优先，不宣称适合全赛季高频查询。当前读取也重解析 HTML，换取来源与业务字段一致性；尚未做大型数据集或高频查询性能验收。
 
@@ -121,6 +121,12 @@ python -X utf8 scripts/knowledge.py query --store D:/Projects/Stronghold-Protoco
 中断测试使用不完整 `.pending-*` 目录作为文件系统故障输入，验证不可查询、不阻塞下一次构建且旧结果不变；未声称在特定写入指令处实际终止进程，也未验证断电恢复。省略 snapshot_id 的查询明确返回参数错误，不选择新旧任一快照。
 
 实际执行 `python -X utf8 scripts/test_knowledge.py`，19 个合成 CLI 测试通过；`python -X utf8 -m py_compile scripts/knowledge.py scripts/test_knowledge.py` 和 `git diff --check` 通过。合成赛季只证明软件隔离行为，不证明真实新赛季来源结构兼容或当前游戏规则正确。此次未增加真实来源材料、游戏原文、生成数据、截图测试或 OCR／识别接入。
+
+## 审阅修复验证（2026-11-15）
+
+公共 CLI 回归先观察到小数人数 `2.5` 被错误接受的 red，再改为完整标签字段校验后 green；合成测试同时拒绝指数、符号、零、前导零、分数、全角数字及尾随文字。另先观察到有效历史 Python／依赖版本记录导致查询失败的 red；修复后基础和干员归档均可在重解析一致时保留原环境记录。未知提取器版本／能力、元数据缺失／额外字段／类型错误，以及修改原文后重算归档校验和仍明确拒绝。
+
+实际执行 `python -X utf8 scripts/test_knowledge.py`，23 个合成 CLI 测试通过；`python -X utf8 -m py_compile scripts/knowledge.py scripts/test_knowledge.py` 和 `git diff --check` 通过。用修复后的 CLI 只读查询旧 ticket 01 的 `literal-b` 归档通过。私有 `build/knowledge-02/check_real.py` 两次真实构建及三盟约／三干员的原文、人数、关系和来源核对通过；`build/knowledge-01/check_real.py` 因 Windows 目录发布重命名返回 `WinError 5` 而未完整通过，需以集成工作树的最终复核结果为准。未提交私有材料或生成数据。
 
 ## 来源与使用边界
 

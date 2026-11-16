@@ -112,13 +112,16 @@ def extract(raw, manifest):
         require(len(rows) == 3 and '盟约所属干员' in rows[2].get_text(),
                 f'{name}: unexpected covenant table structure')
         require(matches[name][0].find_parent('tr') is rows[0], f'{name}: misplaced heading')
-        counts = re.findall(r'激活所需人数\s*(\d+)', rows[0].get_text(' ', strip=True))
-        require(len(counts) == 1 and int(counts[0]) > 0, f'{name}: missing activation count')
+        labels = rows[0].find_all(string=re.compile('激活所需人数'))
+        require(len(labels) == 1, f'{name}: missing unique activation count')
+        count = re.fullmatch(r'激活所需人数\s+([1-9][0-9]*)',
+                             labels[0].parent.get_text(' ', strip=True))
+        require(count is not None, f'{name}: invalid activation count')
         cells = rows[1].find_all('td', recursive=False)
         require(len(cells) == 1, f'{name}: missing effect cell')
         effect = text_with_breaks(cells[0])
         require(bool(effect), f'{name}: empty effect')
-        records[name] = {'name': name, 'activation_count': int(counts[0]),
+        records[name] = {'name': name, 'activation_count': int(count[1]),
                          'effect_source_text': effect,
                          'locator': {'file': 'source.html', 'table_index_1based': table_positions[id(table)],
                                      'heading': name, 'effect_row_1based': 2, 'effect_cell_1based': 1}}
@@ -241,6 +244,23 @@ def load_snapshot(directory, snapshot_id):
             'unsupported snapshot format_version')
     require(snapshot['snapshot_id'] == snapshot_id, 'snapshot_id mismatch')
     expected = make_snapshot(snapshot_id, snapshot['manifest'], (directory / 'source.html').read_bytes())
+    recorded = snapshot['extractor']
+    require(type(recorded) is dict and set(recorded) == set(expected['extractor']),
+            'invalid extractor metadata schema')
+    require(type(recorded['version']) is str and recorded['version'] == EXTRACTOR_VERSION,
+            'unsupported extractor version')
+    require(recorded['parser'] == 'html.parser', 'unsupported extractor parser')
+    if 'capability' in expected['extractor']:
+        require(recorded['capability'] == 'operators-1', 'unsupported extractor capability')
+    for dependency in ('python', 'beautifulsoup4', 'soupsieve', 'typing_extensions'):
+        value = recorded[dependency]
+        require(type(value) is str and re.fullmatch(
+            r'[0-9]+(?:\.[0-9]+)*(?:(?:a|b|rc)[0-9]+)?(?:\.post[0-9]+)?'
+            r'(?:\.dev[0-9]+)?(?:\+[a-z0-9]+(?:[.-][a-z0-9]+)*)?', value) is not None,
+            f'invalid extractor {dependency} version')
+    # Runtime dependencies may change while supported extraction remains identical.
+    # Keep original build provenance; compare all other fields with a fresh parse.
+    expected['extractor'] = recorded
     # A checksum detects damage, while reconstruction checks semantics and provenance.
     # Neither is a signature against an attacker who can replace the entire archive.
     require(json.dumps(snapshot, sort_keys=True) == json.dumps(expected, sort_keys=True),
