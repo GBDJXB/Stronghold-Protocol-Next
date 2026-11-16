@@ -150,6 +150,12 @@ python -X utf8 scripts/knowledge.py query --store D:/Projects/Stronghold-Protoco
 
 实际执行：定向人数回归及兼容测试全部通过；完整 `python -X utf8 scripts/test_knowledge.py` 为 26 个 CLI 测试通过（41.009 秒）；`python -X utf8 -m py_compile scripts/knowledge.py scripts/test_knowledge.py` 和 `git diff --check` 通过。修复工作区的私有 `build/knowledge-02/check_real.py` 两次真实材料构建、三盟约完整效果／人数、三干员特质、五条双向关系、候选和来源一致性核对全部通过。私有材料和生成数据未提交，未进行游戏截图、游戏操作或 OCR 接入。
 
+### Ticket 04 最终复审与集成验证
+
+功能提交 `4ddf0b4` 经独立双轴复审：Standards 对照仓库约定和可维护性检查，0 项可操作发现；Spec 独立运行公共 CLI，四类嵌套后缀拒绝、正常包装兼容、失败快照不可查询和旧快照结果保留均通过，并只读核对真实三盟约人数为 2／2／1，0 项可操作发现。
+
+集成分支 `codex/static-knowledge` 已快进到 `4ddf0b4`。主代理在集成工作区实际执行完整 `python -X utf8 scripts/test_knowledge.py`，26 个 CLI 测试全部通过（42.614 秒）；`python -X utf8 -m py_compile scripts/knowledge.py scripts/test_knowledge.py` 和 `git diff --check` 通过。本段记录复审及集成执行反馈，文档收尾未重复运行测试，也未加入其他实现变更。
+
 ## 来源与使用边界
 
 来源为 [PRTS 盟约记录](https://prts.wiki/w/卫戍协议·规程/PRTS盟约记录)，PRTS 编辑者提供玩家资料，所引游戏原文权利属于相应权利人。固定材料仅用于已授权的本地研究复核；原始 HTML、游戏原文及生成数据的分发权限未确认，因此不纳入提交或自动发布。工具不提供抓取、上传或分发命令。署名和限制随查询返回，不能把站点文字许可自动扩展到所有游戏材料。

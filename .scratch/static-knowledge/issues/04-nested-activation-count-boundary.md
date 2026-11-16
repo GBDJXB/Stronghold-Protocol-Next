@@ -25,3 +25,9 @@ Status: resolved
 - 局限：按 DOM 文本保守验证，标题行新增其他可见说明文字会拒绝；未声明任意 HTML/CSS 视觉等价或真实新赛季兼容。
 
 详细依据与实际命令见 [实现说明](../../../docs/static-knowledge.md)。
+
+### 最终复审与集成
+
+- 功能提交：`4ddf0b4`，已快进合入 `codex/static-knowledge`。
+- 独立 Standards／Spec 双轴复审均为 0 项可操作发现。Standards 检查仓库约定和可维护性；Spec 独立 CLI 验证四类后缀拒绝、正常包装兼容、失败快照不可查询及旧结果保留，并只读核对真实人数 2／2／1。
+- 主代理集成验证：完整 CLI suite 26 tests / 42.614 秒全部通过，`py_compile` 和 `git diff --check` 通过。此处记录复审及集成执行反馈；文档收尾不重复运行 suite，不含其他实现变更。
