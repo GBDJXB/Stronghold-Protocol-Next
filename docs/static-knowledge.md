@@ -126,7 +126,19 @@ python -X utf8 scripts/knowledge.py query --store D:/Projects/Stronghold-Protoco
 
 公共 CLI 回归先观察到小数人数 `2.5` 被错误接受的 red，再改为完整标签字段校验后 green；合成测试同时拒绝指数、符号、零、前导零、分数、全角数字及尾随文字。另先观察到有效历史 Python／依赖版本记录导致查询失败的 red；修复后基础和干员归档均可在重解析一致时保留原环境记录。未知提取器版本／能力、元数据缺失／额外字段／类型错误，以及修改原文后重算归档校验和仍明确拒绝。
 
-实际执行 `python -X utf8 scripts/test_knowledge.py`，23 个合成 CLI 测试通过；`python -X utf8 -m py_compile scripts/knowledge.py scripts/test_knowledge.py` 和 `git diff --check` 通过。用修复后的 CLI 只读查询旧 ticket 01 的 `literal-b` 归档通过。私有 `build/knowledge-02/check_real.py` 两次真实构建及三盟约／三干员的原文、人数、关系和来源核对通过；`build/knowledge-01/check_real.py` 因 Windows 目录发布重命名返回 `WinError 5` 而未完整通过，需以集成工作树的最终复核结果为准。未提交私有材料或生成数据。
+实际执行 `python -X utf8 scripts/test_knowledge.py`，23 个合成 CLI 测试通过；`python -X utf8 -m py_compile scripts/knowledge.py scripts/test_knowledge.py` 和 `git diff --check` 通过。用修复后的 CLI 只读查询旧 ticket 01 的 `literal-b` 归档通过。私有 `build/knowledge-02/check_real.py` 两次真实构建及三盟约／三干员的原文、人数、关系和来源核对通过；修复工作区中的 `build/knowledge-01/check_real.py` 曾因 Windows 目录发布重命名返回 `WinError 5` 未完整通过；最终在集成工作区重新运行，两次真实构建、完整原文及来源比较全部通过。未提交私有材料或生成数据。
+
+## 最终集成验证（2026-11-15）
+
+集成分支 `codex/static-knowledge`，最终功能修复为 `c1dffb7`。在集成工作区实际执行完整 `python -X utf8 scripts/test_knowledge.py`：24 个 CLI 测试全部通过；随后 Python 编译检查和 `git diff --check` 通过。真实来源的两个私有核对入口及旧归档读取已通过，原始 HTML、私有字面期望、manifest 和生成快照不纳入提交。原有截图／OCR 构建未改动，未为本功能运行无关的全量 C++ 检查。
+
+### Standards
+
+独立审阅 6 个实现变更文件，对照仓库约定与固定可维护性检查：0 项需修改问题。
+
+### Spec
+
+独立审阅提出 2 类 P2 问题：完整激活人数校验、历史快照的运行环境兼容。均已修复；后续复核发现的人数嵌套标签边界也补充了先失败再通过的公共 CLI 回归。最终针对性复核无剩余可操作发现。历史环境差异使用合成归档元数据验证，未在第二套 Python 安装上实测。
 
 ## 来源与使用边界
 
